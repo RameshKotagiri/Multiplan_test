@@ -76,7 +76,7 @@ jobs:
           cat <<EOF > credential.xml
           <com.oracle.cloud.baremetal.jenkins.credentials.BaremetalCloudCredentialsImpl>
             <scope>GLOBAL</scope>
-            <id>app-team-oci-credential</id>
+            <id>app-team-oci-credential-test</id>
             <description>OCI credential for application team deployments</description>
             <tenantId>$TENANCY_ID</tenantId>
             <userId>$USER_ID</userId>
@@ -124,9 +124,9 @@ jobs:
           CREDENTIALS=$(curl -s -H "Authorization: Basic $BASIC_AUTH" \
             $JENKINS_URL/credentials/store/system/domain/_/api/json)
           echo "Credentials Response: $CREDENTIALS"
-          if [[ $(echo $CREDENTIALS | jq -r '.credentials[] | select(.id == "app-team-oci-credential") | .id') == "app-team-oci-credential" ]]; then
-            echo "OCI credential 'app-team-oci-credential' successfully created and verified!"
+          if [[ $(echo $CREDENTIALS | jq -r '.credentials[] | select(.id == "app-team-oci-credential-test") | .id') == "app-team-oci-credential-test" ]]; then
+            echo "OCI credential 'app-team-oci-credential-test' successfully created and verified!"
           else
-            echo "Failed to find OCI credential 'app-team-oci-credential'"
+            echo "Failed to find OCI credential 'app-team-oci-credential-test'"
             exit 1
           fi
