@@ -1,4 +1,4 @@
-name: Test Jenkins Authentication
+name: Create Dummy OCI Credential in Jenkins
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  test-jenkins-auth:
+  create-dummy-oci-credential:
     runs-on: ubuntu-latest
 
     steps:
@@ -15,52 +15,104 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # Step 2: Install dependencies (curl)
+      # Step 2: Install dependencies (curl, jq)
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl
+          sudo apt-get install -y curl jq
 
-      # Step 3: Debug network access (without authentication)
-      - name: Debug network access
+      # Step 3: Set dummy OCI credentials
+      - name: Set dummy OCI credentials
+        run: |
+          echo "TENANCY_ID=ocid1.tenancy.oc1..dummytenancyid1234567890" >> $GITHUB_ENV
+          echo "USER_ID=ocid1.user.oc1..dummyuserid1234567890" >> $GITHUB_ENV
+          echo "FINGERPRINT=12:34:56:78:90:ab:cd:ef:12:34:56:78:90:ab:cd:ef" >> $GITHUB_ENV
+          echo "PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC\n...\n-----END PRIVATE KEY-----" >> $GITHUB_ENV
+          echo "REGION=us-phoenix-1" >> $GITHUB_ENV
+
+      # Step 4: Authenticate to Jenkins and create the OCI credential
+      - name: Create OCI credential in Jenkins
         env:
           JENKINS_URL: ${{ secrets.JENKINS_URL }}
+          JENKINS_USER: ${{ secrets.JENKINS_USER }}
+          JENKINS_API_TOKEN: ${{ secrets.JENKINS_API_TOKEN }}
+          TENANCY_ID: ${{ env.TENANCY_ID }}
+          USER_ID: ${{ env.USER_ID }}
+          FINGERPRINT: ${{ env.FINGERPRINT }}
+          PRIVATE_KEY: ${{ env.PRIVATE_KEY }}
+          REGION: ${{ env.REGION }}
         run: |
-          echo "Testing connectivity to $JENKINS_URL/api/json"
-          RESPONSE=$(curl -s -v -w "\nHTTP_STATUS:%{http_code}" $JENKINS_URL/api/json 2>&1)
-          HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS" | cut -d':' -f2)
-          RESPONSE_BODY=$(echo "$RESPONSE" | grep -v "HTTP_STATUS")
-          echo "HTTP Status: $HTTP_STATUS"
-          echo "Response Body: $RESPONSE_BODY"
+          # Encode credentials for HTTP BASIC authentication
+          BASIC_AUTH=$(echo -n "$JENKINS_USER:$JENKINS_API_TOKEN" | base64)
 
-      # Step 4: Test authentication to Jenkins
-      - name: Test Jenkins authentication
+          # Test Jenkins authentication
+          AUTH_TEST=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Basic $BASIC_AUTH" \
+            $JENKINS_URL/api/json)
+
+          if [[ $AUTH_TEST -ne 200 ]]; then
+            echo "Failed to authenticate to Jenkins. HTTP status: $AUTH_TEST"
+            exit 1
+          fi
+          echo "Successfully authenticated to Jenkins!"
+
+          # Get CSRF crumb (required for POST requests)
+          CRUMB_RESPONSE=$(curl -s -H "Authorization: Basic $BASIC_AUTH" \
+            $JENKINS_URL/crumbIssuer/api/json)
+          
+          if [[ $(echo $CRUMB_RESPONSE | jq -r '.crumb') == "null" ]]; then
+            echo "Failed to retrieve CSRF crumb: $CRUMB_RESPONSE"
+            exit 1
+          fi
+
+          CRUMB=$(echo $CRUMB_RESPONSE | jq -r '.crumb')
+          CRUMB_FIELD=$(echo $CRUMB_RESPONSE | jq -r '.crumbRequestField')
+
+          # Create the XML payload for the OCI credential
+          cat <<EOF > credential.xml
+          <com.oracle.cloud.baremetal.jenkins.credentials.BaremetalCloudCredentialsImpl>
+            <scope>GLOBAL</scope>
+            <id>app-team-oci-credential</id>
+            <description>OCI credential for application team deployments</description>
+            <tenantId>$TENANCY_ID</tenantId>
+            <userId>$USER_ID</userId>
+            <fingerprint>$FINGERPRINT</fingerprint>
+            <privateKey>$PRIVATE_KEY</privateKey>
+            <passPhrase></passPhrase>
+            <region>$REGION</region>
+            <useInstancePrincipal>false</useInstancePrincipal>
+          </com.oracle.cloud.baremetal.jenkins.credentials.BaremetalCloudCredentialsImpl>
+          EOF
+
+          # Create the credential in Jenkins
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST \
+            -H "Authorization: Basic $BASIC_AUTH" \
+            -H "$CRUMB_FIELD: $CRUMB" \
+            -H "Content-Type: application/xml" \
+            --data @credential.xml \
+            $JENKINS_URL/credentials/store/system/domain/_/createCredentials)
+
+          if [[ $RESPONSE -eq 200 ]]; then
+            echo "Successfully created OCI credential in Jenkins!"
+          else
+            echo "Failed to create OCI credential. HTTP status: $RESPONSE"
+            exit 1
+          fi
+
+      # Step 5: Verify the credential in Jenkins
+      - name: Verify OCI credential
         env:
           JENKINS_URL: ${{ secrets.JENKINS_URL }}
           JENKINS_USER: ${{ secrets.JENKINS_USER }}
           JENKINS_API_TOKEN: ${{ secrets.JENKINS_API_TOKEN }}
         run: |
-          echo "JENKINS_URL: $JENKINS_URL"
-          echo "JENKINS_USER: $JENKINS_USER"
-          echo "JENKINS_API_TOKEN: [REDACTED]"
-
-          # Encode credentials for HTTP BASIC authentication
           BASIC_AUTH=$(echo -n "$JENKINS_USER:$JENKINS_API_TOKEN" | base64)
-          echo "Encoded BASIC_AUTH: $BASIC_AUTH"
-
-          # Test authentication with a GET request, capture full response
-          RESPONSE=$(curl -s -v -w "\nHTTP_STATUS:%{http_code}" \
-            -H "Authorization: Basic $BASIC_AUTH" \
-            $JENKINS_URL/api/json 2>&1)
-
-          HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS" | cut -d':' -f2)
-          RESPONSE_BODY=$(echo "$RESPONSE" | grep -v "HTTP_STATUS")
-
-          echo "HTTP Status: $HTTP_STATUS"
-          echo "Response Body: $RESPONSE_BODY"
-
-          if [[ $HTTP_STATUS -ne 200 ]]; then
-            echo "Failed to authenticate to Jenkins. HTTP status: $HTTP_STATUS"
+          CREDENTIALS=$(curl -s -H "Authorization: Basic $BASIC_AUTH" \
+            $JENKINS_URL/credentials/store/system/domain/_/api/json)
+          if [[ $(echo $CREDENTIALS | jq -r '.credentials[] | select(.id == "app-team-oci-credential") | .id') == "app-team-oci-credential" ]]; then
+            echo "OCI credential 'app-team-oci-credential' successfully created and verified!"
+          else
+            echo "Failed to find OCI credential 'app-team-oci-credential'"
             exit 1
           fi
-          echo "Successfully authenticated to Jenkins!"
