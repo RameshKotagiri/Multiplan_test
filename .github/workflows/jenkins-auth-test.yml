@@ -1,0 +1,15 @@
+name: Jenkins Auth Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-jenkins-auth:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Try fetching Jenkins CSRF crumb
+        run: |
+          curl -s -u "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }}" \
+            "${{ secrets.JENKINS_URL }}/crumbIssuer/api/json" \
+            | jq .
