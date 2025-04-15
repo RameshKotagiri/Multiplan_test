@@ -1,0 +1,43 @@
+name: Test Jenkins Authentication
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  test-jenkins-auth:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the repository
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # Step 2: Install dependencies (curl)
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl
+
+      # Step 3: Test authentication to Jenkins
+      - name: Test Jenkins authentication
+        env:
+          JENKINS_URL: ${{ secrets.JENKINS_URL }}
+          JENKINS_USER: "github-actions-service-account"
+          JENKINS_API_TOKEN: ${{ secrets.JENKINS_API_TOKEN }}
+        run: |
+          # Encode credentials for HTTP BASIC authentication
+          BASIC_AUTH=$(echo -n "$JENKINS_USER:$JENKINS_API_TOKEN" | base64)
+
+          # Test authentication with a GET request
+          AUTH_TEST=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Basic $BASIC_AUTH" \
+            $JENKINS_URL/api/json)
+
+          if [[ $AUTH_TEST -ne 200 ]]; then
+            echo "Failed to authenticate to Jenkins. HTTP status: $AUTH_TEST"
+            exit 1
+          fi
+          echo "Successfully authenticated to Jenkins!"
