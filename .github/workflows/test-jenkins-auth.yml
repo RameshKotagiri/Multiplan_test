@@ -21,23 +21,46 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y curl
 
-      # Step 3: Test authentication to Jenkins
+      # Step 3: Debug network access (without authentication)
+      - name: Debug network access
+        env:
+          JENKINS_URL: ${{ secrets.JENKINS_URL }}
+        run: |
+          echo "Testing connectivity to $JENKINS_URL/api/json"
+          RESPONSE=$(curl -s -v -w "\nHTTP_STATUS:%{http_code}" $JENKINS_URL/api/json 2>&1)
+          HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS" | cut -d':' -f2)
+          RESPONSE_BODY=$(echo "$RESPONSE" | grep -v "HTTP_STATUS")
+          echo "HTTP Status: $HTTP_STATUS"
+          echo "Response Body: $RESPONSE_BODY"
+
+      # Step 4: Test authentication to Jenkins
       - name: Test Jenkins authentication
         env:
           JENKINS_URL: ${{ secrets.JENKINS_URL }}
-          JENKINS_USER: "github-actions-service-account"
+          JENKINS_USER: ${{ secrets.JENKINS_USER }}
           JENKINS_API_TOKEN: ${{ secrets.JENKINS_API_TOKEN }}
         run: |
+          echo "JENKINS_URL: $JENKINS_URL"
+          echo "JENKINS_USER: $JENKINS_USER"
+          echo "JENKINS_API_TOKEN: [REDACTED]"
+
           # Encode credentials for HTTP BASIC authentication
           BASIC_AUTH=$(echo -n "$JENKINS_USER:$JENKINS_API_TOKEN" | base64)
+          echo "Encoded BASIC_AUTH: $BASIC_AUTH"
 
-          # Test authentication with a GET request
-          AUTH_TEST=$(curl -s -o /dev/null -w "%{http_code}" \
+          # Test authentication with a GET request, capture full response
+          RESPONSE=$(curl -s -v -w "\nHTTP_STATUS:%{http_code}" \
             -H "Authorization: Basic $BASIC_AUTH" \
-            $JENKINS_URL/api/json)
+            $JENKINS_URL/api/json 2>&1)
 
-          if [[ $AUTH_TEST -ne 200 ]]; then
-            echo "Failed to authenticate to Jenkins. HTTP status: $AUTH_TEST"
+          HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS" | cut -d':' -f2)
+          RESPONSE_BODY=$(echo "$RESPONSE" | grep -v "HTTP_STATUS")
+
+          echo "HTTP Status: $HTTP_STATUS"
+          echo "Response Body: $RESPONSE_BODY"
+
+          if [[ $HTTP_STATUS -ne 200 ]]; then
+            echo "Failed to authenticate to Jenkins. HTTP status: $HTTP_STATUS"
             exit 1
           fi
           echo "Successfully authenticated to Jenkins!"
