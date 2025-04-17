@@ -1,7 +1,7 @@
-name: Test OCI Authentication
+name: Test OCI Authentication and Vault Access
 
 on:
-  workflow_dispatch: 
+  workflow_dispatch:
 
 jobs:
   verify-oci-auth:
@@ -34,8 +34,37 @@ jobs:
           region=${OCI_CLI_REGION}
           EOF
 
-      - name: Test Authentication
+      - name: Test General OCI Authentication
         run: |
-          echo "Testing OCI access using 'oci os ns get'..."
+          echo "Testing OCI CLI authentication with 'oci os ns get'..."
           oci os ns get --query "data" --raw-output
-          echo "Success! OCI authentication works."
+          echo "Basic OCI authentication succeeded."
+
+      - name: Test Vault Access (List Secrets)
+        env:
+          COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }}
+        run: |
+          echo "Listing secrets in compartment: $COMPARTMENT_OCID"
+          oci secrets secret-bundle list \
+            --compartment-id "$COMPARTMENT_OCID" \
+            --query "data[*].\"secret-name\"" \
+            --raw-output
+          echo "Vault secret listing succeeded."
+
+      - name: Test Vault Service Access (List Vaults)
+        env:
+          COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }}
+        run: |
+          echo "Verifying access to Vault service..."
+          VAULT_LIST=$(oci vault vault list \
+            --compartment-id "$COMPARTMENT_OCID" \
+            --limit 1 \
+            --query "data[0].\"display-name\"" \
+            --raw-output)
+
+          if [ -z "$VAULT_LIST" ]; then
+            echo "Failed to access Vault service"
+            exit 1
+          else
+            echo "Vault service access verified. First Vault: $VAULT_LIST"
+          fi
