@@ -11,9 +11,11 @@ jobs:
 
     steps:
       - name: Setup OCI CLI
-        uses: oracle-actions/setup-oci-cli@v1
-        with:
-          version: 3.0.0
+        run: |
+          echo "Installing OCI CLI..."
+          curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh | bash -s -- --accept-all-defaults
+          export PATH=$PATH:$HOME/bin
+          oci --version
 
       - name: Configure OCI Credentials
         env:
