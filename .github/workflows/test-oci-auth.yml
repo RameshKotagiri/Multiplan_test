@@ -3,7 +3,7 @@ name: Test OCI Authentication and Vault Access
 on:
   push:
     branches:
-      - feature/create-jenkins-oci-credential-store  # or 'main' once merged
+      - feature/create-jenkins-oci-credential-store
   workflow_dispatch:
 
 jobs:
@@ -43,3 +43,32 @@ jobs:
           echo "Testing OCI CLI authentication with 'oci os ns get'..."
           oci os ns get --query "data" --raw-output
           echo "Basic OCI authentication succeeded!"
+
+      # - name: Test Vault Access (List Secrets)
+      #   env:
+      #     COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }}
+      #   run: |
+      #     echo "Listing secrets in compartment: $COMPARTMENT_OCID"
+      #     oci secrets secret-bundle list \
+      #       --compartment-id "$COMPARTMENT_OCID" \
+      #       --query "data[*].\"secret-name\"" \
+      #       --raw-output
+      #     echo "Vault secret listing succeeded."
+
+      # - name: Test Vault Service Access (List Vaults)
+      #   env:
+      #     COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }}
+      #   run: |
+      #     echo "Verifying access to Vault service..."
+      #     VAULT_LIST=$(oci vault vault list \
+      #       --compartment-id "$COMPARTMENT_OCID" \
+      #       --limit 1 \
+      #       --query "data[0].\"display-name\"" \
+      #       --raw-output)
+
+      #     if [ -z "$VAULT_LIST" ]; then
+      #       echo "Failed to access Vault service"
+      #       exit 1
+      #     else
+      #       echo "Vault service access verified. First Vault: $VAULT_LIST"
+      #     fi
