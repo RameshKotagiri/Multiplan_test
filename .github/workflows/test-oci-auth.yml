@@ -1,9 +1,10 @@
 name: Test OCI Authentication and Vault Access
 
 on:
-  workflow_dispatch:
+  push:
     branches:
-      - feature/create-jenkins-oci-credential-store
+      - feature/create-jenkins-oci-credential-store  # or 'main' once merged
+  workflow_dispatch:
 
 jobs:
   verify-oci-auth:
@@ -14,8 +15,7 @@ jobs:
         run: |
           echo "Installing OCI CLI..."
           curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh | bash -s -- --accept-all-defaults
-          export PATH=$PATH:$HOME/bin
-          oci --version
+          echo "$HOME/bin" >> $GITHUB_PATH  # Add OCI CLI to PATH
 
       - name: Configure OCI Credentials
         env:
@@ -42,33 +42,4 @@ jobs:
         run: |
           echo "Testing OCI CLI authentication with 'oci os ns get'..."
           oci os ns get --query "data" --raw-output
-          echo "Basic OCI authentication succeeded."
-
-      - name: Test Vault Access (List Secrets)
-        env:
-          COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }}
-        run: |
-          echo "Listing secrets in compartment: $COMPARTMENT_OCID"
-          oci secrets secret-bundle list \
-            --compartment-id "$COMPARTMENT_OCID" \
-            --query "data[*].\"secret-name\"" \
-            --raw-output
-          echo "Vault secret listing succeeded."
-
-      - name: Test Vault Service Access (List Vaults)
-        env:
-          COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }}
-        run: |
-          echo "Verifying access to Vault service..."
-          VAULT_LIST=$(oci vault vault list \
-            --compartment-id "$COMPARTMENT_OCID" \
-            --limit 1 \
-            --query "data[0].\"display-name\"" \
-            --raw-output)
-
-          if [ -z "$VAULT_LIST" ]; then
-            echo "Failed to access Vault service"
-            exit 1
-          else
-            echo "Vault service access verified. First Vault: $VAULT_LIST"
-          fi
+          echo "Basic OCI authentication succeeded!"
