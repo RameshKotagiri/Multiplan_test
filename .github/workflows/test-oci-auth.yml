@@ -8,7 +8,7 @@ on:
 
 jobs:
   verify-oci-auth:
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-set
 
     steps:
       - name: Setup OCI CLI
