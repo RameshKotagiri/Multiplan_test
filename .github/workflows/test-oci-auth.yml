@@ -65,50 +65,6 @@ jobs:
           oci os ns get --query "data" --raw-output --debug || { echo "OCI authentication failed"; exit 1; }
           echo "Basic OCI authentication succeeded!"name: Test OCI Authentication and Vault Access
 
-on:
-  push:
-    branches:
-      - feature/create-jenkins-oci-credential-store
-  workflow_dispatch:
-
-jobs:
-  verify-oci-auth:
-    runs-on: arc-runner-set
-
-    steps:
-      - name: Setup OCI CLI
-        run: |
-          echo "Installing OCI CLI..."
-          curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh | bash -s -- --accept-all-defaults
-          echo "$HOME/bin" >> $GITHUB_PATH  # Add OCI CLI to PATH
-
-      - name: Configure OCI Credentials
-        env:
-          OCI_CLI_USER: ${{ secrets.OCI_USER_OCID }}
-          OCI_CLI_TENANCY: ${{ secrets.OCI_TENANCY_OCID }}
-          OCI_CLI_FINGERPRINT: ${{ secrets.OCI_API_FINGERPRINT }}
-          OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_PRIVATE_KEY }}
-          OCI_CLI_REGION: ${{ secrets.OCI_REGION }}
-        run: |
-          mkdir -p ~/.oci
-          echo "$OCI_CLI_KEY_CONTENT" > ~/.oci/private_key.pem
-          chmod 600 ~/.oci/private_key.pem
-
-          cat > ~/.oci/config <<EOF
-          [DEFAULT]
-          user=${OCI_CLI_USER}
-          fingerprint=${OCI_CLI_FINGERPRINT}
-          key_file=/home/runner/.oci/private_key.pem
-          tenancy=${OCI_CLI_TENANCY}
-          region=${OCI_CLI_REGION}
-          EOF
-
-      - name: Test General OCI Authentication
-        run: |
-          echo "Testing OCI CLI authentication with 'oci os ns get'..."
-          oci os ns get --query "data" --raw-output
-          echo "Basic OCI authentication succeeded!"
-
       # - name: Test Vault Access (List Secrets)
       #   env:
       #     COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }}
