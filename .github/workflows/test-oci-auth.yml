@@ -1,15 +1,14 @@
-name: Test OCI Authentication and Vault Access
+name: Test OCI Authentication
 
 on:
   push:
     branches:
-      - feature/create-jenkins-oci-credential-store
+      - feature/create-oci-credential-jenkins
   workflow_dispatch:
 
 jobs:
   verify-oci-auth:
     runs-on: arc-runner-set
-
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -19,6 +18,10 @@ jobs:
           echo "Installing OCI CLI..."
           curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh | bash -s -- --accept-all-defaults
           echo "$HOME/bin" >> $GITHUB_PATH
+
+      - name: Verify OCI
+        run: |
+          # Verify installation
           which oci
           oci --version || { echo "OCI CLI installation failed"; exit 1; }
 
@@ -32,10 +35,13 @@ jobs:
         run: |
           echo "Creating OCI configuration..."
           mkdir -p ~/.oci
+          # Write private key and ensure correct formatting
           echo "$OCI_CLI_KEY_CONTENT" > ~/.oci/private_key.pem
+          # Append OCI_API_KEY label to suppress warning
           echo "OCI_API_KEY" >> ~/.oci/private_key.pem
           chmod 600 ~/.oci/private_key.pem
 
+          # Write OCI config file
           cat > ~/.oci/config <<EOF
           [DEFAULT]
           user=${OCI_CLI_USER}
@@ -45,45 +51,30 @@ jobs:
           region=${OCI_CLI_REGION}
           EOF
 
+          # Set config file permissions
           chmod 600 ~/.oci/config
+
+          # Debug: Print config (mask sensitive data)
           echo "OCI Config (masked):"
           sed 's/\(user=\).*/\1[REDACTED]/; s/\(fingerprint=\).*/\1[REDACTED]/; s/\(tenancy=\).*/\1[REDACTED]/' ~/.oci/config
           echo "Private key exists: $(ls -l ~/.oci/private_key.pem)"
 
       - name: Test General OCI Authentication
         env:
-          OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING: "True"
+          OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING: "True"  
           SUPPRESS_LABEL_WARNING: "True"
         run: |
           echo "Testing OCI CLI authentication with 'oci os ns get'..."
           oci os ns get --query "data" --raw-output --debug || { echo "OCI authentication failed"; exit 1; }
           echo "Basic OCI authentication succeeded!"
 
-      # - name: Test Vault Access (List Secrets)
-      #   env:
-      #     COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }}
-      #   run: |
-      #     echo "Listing secrets in compartment: $COMPARTMENT_OCID"
-      #     oci secrets secret-bundle list \
-      #       --compartment-id "$COMPARTMENT_OCID" \
-      #       --query "data[*].\"secret-name\"" \
-      #       --raw-output
-      #     echo "Vault secret listing succeeded."
-
-      # - name: Test Vault Service Access (List Vaults)
-      #   env:
-      #     COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }}
-      #   run: |
-      #     echo "Verifying access to Vault service..."
-      #     VAULT_LIST=$(oci vault vault list \
-      #       --compartment-id "$COMPARTMENT_OCID" \
-      #       --limit 1 \
-      #       --query "data[0].\"display-name\"" \
-      #       --raw-output)
-
-      #     if [ -z "$VAULT_LIST" ]; then
-      #       echo "Failed to access Vault service"
-      #       exit 1
-      #     else
-      #       echo "Vault service access verified. First Vault: $VAULT_LIST"
-      #     fi
+      - name: Test Vault Access (List Secrets)
+        env:
+          COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }}
+        run: |
+          echo "Listing secrets in compartment: $COMPARTMENT_OCID"
+          oci secrets secret-bundle list \
+            --compartment-id "$COMPARTMENT_OCID" \
+            --query "data[*].\"secret-name\"" \
+            --raw-output
+          echo "Vault secret listing succeeded."
