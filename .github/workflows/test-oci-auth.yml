@@ -84,10 +84,27 @@ jobs:
           OCI_VAULT_SECRET_OCID: ${{ secrets.OCI_VAULT_SECRET_OCID }}
         run: |
           echo "Fetching secret with OCID: $OCI_VAULT_SECRET_OCID"
-          SECRET_CONTENT=$(oci vault secret get-secret-bundle \
+          # Run the OCI command and capture the raw output for debugging
+          RAW_SECRET=$(oci vault secret get-secret-bundle \
             --secret-id "$OCI_VAULT_SECRET_OCID" \
             --query "data.\"secret-bundle-content\".content" \
-            --raw-output | base64 --decode) || { echo "Failed to fetch secret"; exit 1; }
+            --raw-output --debug) || { echo "OCI command failed to fetch secret"; exit 1; }
+          echo "Raw secret content (before decoding): $RAW_SECRET"
+          # Check if the raw secret is empty
+          if [ -z "$RAW_SECRET" ]; then
+            echo "Error: Secret content is empty"
+            exit 1
+          fi
+          # Attempt to decode, but handle cases where it's not base64-encoded
+          echo "$RAW_SECRET" | base64 --decode > decoded_secret 2>/dev/null
+          if [ $? -eq 0 ]; then
+            SECRET_CONTENT=$(cat decoded_secret)
+            echo "Secret was base64-encoded. Decoded content: ***"
+          else
+            # If decoding fails, assume the secret is not base64-encoded
+            SECRET_CONTENT="$RAW_SECRET"
+            echo "Secret is not base64-encoded. Using raw content: ***"
+          fi
           echo "Secret fetched successfully!"
-          # Optionally print the secret (be cautious with sensitive data in logs)
-          echo "Secret content: $SECRET_CONTENT"
+          # Optionally set the secret as an environment variable for later use (masked in logs)
+          echo "secret-content=$SECRET_CONTENT" >> $GITHUB_ENV
