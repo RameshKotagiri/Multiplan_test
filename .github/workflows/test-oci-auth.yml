@@ -1,4 +1,4 @@
-name: Test OCI Authentication
+name: Test OCI Authentication and Vault Access
 
 on:
   push:
@@ -68,13 +68,26 @@ jobs:
           oci os ns get --query "data" --raw-output --debug || { echo "OCI authentication failed"; exit 1; }
           echo "Basic OCI authentication succeeded!"
 
-      - name: Test Vault Access (List Secrets)
+      - name: List Secrets in Compartment (Optional)
         env:
           COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }}
         run: |
           echo "Listing secrets in compartment: $COMPARTMENT_OCID"
-          oci secrets secret-bundle list \
+          oci vault secret list \
             --compartment-id "$COMPARTMENT_OCID" \
-            --query "data[*].\"secret-name\"" \
-            --raw-output
+            --query "data[*].{name:\"secret-name\", ocid:id}" \
+            --raw-output || { echo "Failed to list secrets"; exit 1; }
           echo "Vault secret listing succeeded."
+
+      - name: Fetch Secret from OCI Vault
+        env:
+          OCI_VAULT_SECRET_OCID: ${{ secrets.OCI_VAULT_SECRET_OCID }}
+        run: |
+          echo "Fetching secret with OCID: $OCI_VAULT_SECRET_OCID"
+          SECRET_CONTENT=$(oci vault secret get-secret-bundle \
+            --secret-id "$OCI_VAULT_SECRET_OCID" \
+            --query "data.\"secret-bundle-content\".content" \
+            --raw-output | base64 --decode) || { echo "Failed to fetch secret"; exit 1; }
+          echo "Secret fetched successfully!"
+          # Optionally print the secret (be cautious with sensitive data in logs)
+          echo "Secret content: $SECRET_CONTENT"
