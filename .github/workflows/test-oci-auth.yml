@@ -9,6 +9,7 @@ on:
 jobs:
   verify-oci-auth:
     runs-on: arc-runner-set
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -21,7 +22,6 @@ jobs:
 
       - name: Verify OCI
         run: |
-          # Verify installation
           which oci
           oci --version || { echo "OCI CLI installation failed"; exit 1; }
 
@@ -35,13 +35,10 @@ jobs:
         run: |
           echo "Creating OCI configuration..."
           mkdir -p ~/.oci
-          # Write private key and ensure correct formatting
           echo "$OCI_CLI_KEY_CONTENT" > ~/.oci/private_key.pem
-          # Append OCI_API_KEY label to suppress warning
           echo "OCI_API_KEY" >> ~/.oci/private_key.pem
           chmod 600 ~/.oci/private_key.pem
 
-          # Write OCI config file
           cat > ~/.oci/config <<EOF
           [DEFAULT]
           user=${OCI_CLI_USER}
@@ -51,60 +48,51 @@ jobs:
           region=${OCI_CLI_REGION}
           EOF
 
-          # Set config file permissions
           chmod 600 ~/.oci/config
+          echo "OCI config ready"
 
-          # Debug: Print config (mask sensitive data)
-          echo "OCI Config (masked):"
-          sed 's/\(user=\).*/\1[REDACTED]/; s/\(fingerprint=\).*/\1[REDACTED]/; s/\(tenancy=\).*/\1[REDACTED]/' ~/.oci/config
-          echo "Private key exists: $(ls -l ~/.oci/private_key.pem)"
-
-      - name: Test General OCI Authentication
+      - name: Test OCI Authentication
         env:
-          OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING: "True"  
-          SUPPRESS_LABEL_WARNING: "True"
+          OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING: "True"
         run: |
-          echo "Testing OCI CLI authentication with 'oci os ns get'..."
+          echo "Testing OCI CLI authentication..."
           oci os ns get --query "data" --raw-output --debug || { echo "OCI authentication failed"; exit 1; }
-          echo "Basic OCI authentication succeeded!"
+          echo "OCI authentication successful!"
 
-      - name: List Secrets in Compartment (Optional)
+      - name: List Secrets in Compartment
         env:
           COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }}
         run: |
           echo "Listing secrets in compartment: $COMPARTMENT_OCID"
           oci vault secret list \
             --compartment-id "$COMPARTMENT_OCID" \
-            --query "data[*].{name:\"secret-name\", ocid:id}" \
-            --raw-output || { echo "Failed to list secrets"; exit 1; }
-          echo "Vault secret listing succeeded."
+            --output table || { echo "Failed to list secrets"; exit 1; }
 
-      - name: Fetch Secret from OCI Vault
+      - name: Fetch and Decode Secret from OCI Vault
         env:
           OCI_VAULT_SECRET_OCID: ${{ secrets.OCI_VAULT_SECRET_OCID }}
         run: |
           echo "Fetching secret with OCID: $OCI_VAULT_SECRET_OCID"
-          # Run the OCI command and capture the raw output for debugging
           RAW_SECRET=$(oci vault secret get-secret-bundle \
             --secret-id "$OCI_VAULT_SECRET_OCID" \
             --query "data.\"secret-bundle-content\".content" \
             --raw-output --debug) || { echo "OCI command failed to fetch secret"; exit 1; }
-          echo "Raw secret content (before decoding): $RAW_SECRET"
-          # Check if the raw secret is empty
+
+          echo "Raw secret content: $RAW_SECRET"
+
           if [ -z "$RAW_SECRET" ]; then
             echo "Error: Secret content is empty"
             exit 1
           fi
-          # Attempt to decode, but handle cases where it's not base64-encoded
+
           echo "$RAW_SECRET" | base64 --decode > decoded_secret 2>/dev/null
           if [ $? -eq 0 ]; then
             SECRET_CONTENT=$(cat decoded_secret)
-            echo "Secret was base64-encoded. Decoded content: ***"
+            echo "Secret was base64-encoded. Decoded."
           else
-            # If decoding fails, assume the secret is not base64-encoded
             SECRET_CONTENT="$RAW_SECRET"
-            echo "Secret is not base64-encoded. Using raw content: ***"
+            echo "Secret is not base64-encoded. Using as is."
           fi
+
           echo "Secret fetched successfully!"
-          # Optionally set the secret as an environment variable for later use (masked in logs)
           echo "secret-content=$SECRET_CONTENT" >> $GITHUB_ENV
