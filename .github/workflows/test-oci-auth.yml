@@ -1,10 +1,10 @@
 name: OCI Vault Secret Retrieval
 
 on:
-  workflow_dispatch:  # Manual trigger for production testing
+  workflow_dispatch: 
   push:
     branches:
-      - feature/create-oci-credential-jenkins  # Add your feature branch
+      - feature/create-oci-credential-jenkins
 
 jobs:
   retrieve-secret:
@@ -18,7 +18,7 @@ jobs:
         run: |
           echo "Installing OCI CLI..."
           curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh | \
-          bash -s -- --accept-all-defaults --oci-cli-version 3.54.3
+          bash -s -- --accept-all-defaults
           echo "$HOME/bin" >> $GITHUB_PATH
 
       - name: Configure Secure Authentication
@@ -30,12 +30,8 @@ jobs:
           OCI_CLI_REGION: ${{ secrets.OCI_REGION }}
         run: |
           mkdir -p ~/.oci
-          umask 077
-          cat > ~/.oci/private_key.pem <<EOF
-          -----BEGIN RSA PRIVATE KEY-----
-          ${OCI_CLI_KEY_CONTENT}
-          -----END RSA PRIVATE KEY-----
-          EOF
+          echo "$OCI_CLI_KEY_CONTENT" > ~/.oci/private_key.pem
+          chmod 600 ~/.oci/private_key.pem
 
           cat > ~/.oci/config <<EOF
           [DEFAULT]
