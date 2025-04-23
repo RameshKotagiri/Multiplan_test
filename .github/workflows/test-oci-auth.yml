@@ -69,30 +69,26 @@ jobs:
             --output table || { echo "Failed to list secrets"; exit 1; }
 
       - name: Fetch and Decode Secret from OCI Vault
-        env:
-          OCI_VAULT_SECRET_OCID: ${{ secrets.OCI_VAULT_SECRET_OCID }}
-        run: |
-          echo "Fetching secret with OCID: $OCI_VAULT_SECRET_OCID"
-          RAW_SECRET=$(oci vault secret get-secret-bundle \
-            --secret-id "$OCI_VAULT_SECRET_OCID" \
-            --query "data.\"secret-bundle-content\".content" \
-            --raw-output --debug) || { echo "OCI command failed to fetch secret"; exit 1; }
+  env:
+    OCI_VAULT_SECRET_OCID: ${{ secrets.OCI_VAULT_SECRET_OCID }}
+  run: |
+    echo "Fetching secret with OCID: $OCI_VAULT_SECRET_OCID"
+    RAW_SECRET=$(oci secrets secret-bundle get \
+      --secret-id "$OCI_VAULT_SECRET_OCID" \
+      --query "data.\"secret-bundle-content\".content" \
+      --raw-output)
 
-          echo "Raw secret content: $RAW_SECRET"
+    if [ -z "$RAW_SECRET" ]; then
+      echo "Error: Secret content is empty"
+      exit 1
+    fi
 
-          if [ -z "$RAW_SECRET" ]; then
-            echo "Error: Secret content is empty"
-            exit 1
-          fi
+    echo "Decoding secret..."
+    SECRET_CONTENT=$(echo "$RAW_SECRET" | base64 --decode)
+    echo "Secret successfully fetched and decoded"
 
-          echo "$RAW_SECRET" | base64 --decode > decoded_secret 2>/dev/null
-          if [ $? -eq 0 ]; then
-            SECRET_CONTENT=$(cat decoded_secret)
-            echo "Secret was base64-encoded. Decoded."
-          else
-            SECRET_CONTENT="$RAW_SECRET"
-            echo "Secret is not base64-encoded. Using as is."
-          fi
+    # Mask the secret from logs
+    echo "::add-mask::$SECRET_CONTENT"
 
-          echo "Secret fetched successfully!"
-          echo "secret-content=$SECRET_CONTENT" >> $GITHUB_ENV
+    # Export for use in later steps
+    echo "secret-content=$SECRET_CONTENT" >> $GITHUB_ENV
