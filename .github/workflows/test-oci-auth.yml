@@ -1,13 +1,13 @@
-name: Test OCI Authentication and Vault Access
+name: OCI Vault Secret Retrieval
 
 on:
+  workflow_dispatch:  # Manual trigger for production testing
   push:
     branches:
-      - feature/create-oci-credential-jenkins
-  workflow_dispatch:
+      - feature/create-oci-credential-jenkins  # Add your feature branch
 
 jobs:
-  verify-oci-auth:
+  retrieve-secret:
     runs-on: arc-runner-set
 
     steps:
@@ -17,15 +17,11 @@ jobs:
       - name: Setup OCI CLI
         run: |
           echo "Installing OCI CLI..."
-          curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh | bash -s -- --accept-all-defaults
+          curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh | \
+          bash -s -- --accept-all-defaults --oci-cli-version 3.54.3
           echo "$HOME/bin" >> $GITHUB_PATH
 
-      - name: Verify OCI
-        run: |
-          which oci
-          oci --version || { echo "OCI CLI installation failed"; exit 1; }
-
-      - name: Configure OCI Credentials
+      - name: Configure Secure Authentication
         env:
           OCI_CLI_USER: ${{ secrets.OCI_USER_OCID }}
           OCI_CLI_TENANCY: ${{ secrets.OCI_TENANCY_OCID }}
@@ -33,11 +29,13 @@ jobs:
           OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_PRIVATE_KEY }}
           OCI_CLI_REGION: ${{ secrets.OCI_REGION }}
         run: |
-          echo "Creating OCI configuration..."
           mkdir -p ~/.oci
-          echo "$OCI_CLI_KEY_CONTENT" > ~/.oci/private_key.pem
-          echo "OCI_API_KEY" >> ~/.oci/private_key.pem
-          chmod 600 ~/.oci/private_key.pem
+          umask 077
+          cat > ~/.oci/private_key.pem <<EOF
+          -----BEGIN RSA PRIVATE KEY-----
+          ${OCI_CLI_KEY_CONTENT}
+          -----END RSA PRIVATE KEY-----
+          EOF
 
           cat > ~/.oci/config <<EOF
           [DEFAULT]
@@ -48,53 +46,31 @@ jobs:
           region=${OCI_CLI_REGION}
           EOF
 
-          chmod 600 ~/.oci/config
-          echo "OCI config ready"
-
-      - name: Test OCI Authentication
+      - name: Retrieve Vault Secret
         env:
+          OCI_VAULT_SECRET_OCID: ${{ secrets.OCI_VAULT_SECRET_OCID }}
           OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING: "True"
         run: |
-          echo "Testing OCI CLI authentication..."
-          oci os ns get --query "data" --raw-output --debug || { echo "OCI authentication failed"; exit 1; }
-          echo "OCI authentication successful!"
+          echo "Checking access to secret..."
+          if ! oci secrets secret-bundle get \
+            --secret-id "$OCI_VAULT_SECRET_OCID" \
+            --query "data.\"secret-name\"" \
+            --raw-output >/dev/null; then
+              echo "::error::Secret access denied or invalid OCID"
+              exit 1
+          fi
 
-      - name: List Secrets in Compartment
-        env:
-          COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }}
-        run: |
-          echo "Listing secrets in compartment: $COMPARTMENT_OCID"
-          oci vault secret list \
-            --compartment-id "$COMPARTMENT_OCID" \
-            --output table || { echo "Failed to list secrets"; exit 1; }
-
-      - name: Debug OCID value
-        env:
-          OCI_VAULT_SECRET_OCID: ${{ secrets.OCI_VAULT_SECRET_OCID }}
-        run: |
-          echo "Secret OCID start with: ${OCI_VAULT_SECRET_OCID:0:16}"
-
-      - name: Fetch and Decode Secret from OCI Vault
-        env:
-          OCI_VAULT_SECRET_OCID: ${{ secrets.OCI_VAULT_SECRET_OCID }}
-        run: |
-          echo "Fetching secret with OCID: $OCI_VAULT_SECRET_OCID"
-          RAW_SECRET=$(oci secrets secret-bundle get \
+          echo "Fetching and decoding secret..."
+          SECRET_CONTENT=$(oci secrets secret-bundle get \
             --secret-id "$OCI_VAULT_SECRET_OCID" \
             --query "data.\"secret-bundle-content\".content" \
-            --raw-output)
+            --raw-output | base64 --decode)
 
-          if [ -z "$RAW_SECRET" ]; then
-            echo "Error: Secret content is empty"
+          if [ -z "$SECRET_CONTENT" ]; then
+            echo "::error::Secret content is empty after decoding"
             exit 1
           fi
 
-          echo "Decoding secret..."
-          SECRET_CONTENT=$(echo "$RAW_SECRET" | base64 --decode)
-          echo "Secret successfully fetched and decoded"
-
-          # Mask the secret from logs
           echo "::add-mask::$SECRET_CONTENT"
-
-          # Export for use in later steps
           echo "secret-content=$SECRET_CONTENT" >> $GITHUB_ENV
+          echo "Secret retrieved successfully"
