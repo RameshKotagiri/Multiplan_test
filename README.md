@@ -35,7 +35,3 @@ bGNdQE6ec7NunJjyw/ciG3I0XVp5u3eC7eJ9KVD6PRLLlqvSTkoFUwZGmCGeo2XI
 ZDfndIiZuhwDEHoq0HL8+XB+btpOYGM38aTO3RTyeqmRhdZvqup9pdXW9EiVEsF5
 -----END RSA PRIVATE KEY-----
 Secret retrieved successfully
-Error: Unable to process file command 'env' successfully.
-Error: Invalid format '2xgF6w8xnff+pbHavPneRFK4Y/r2tP0Veow0+NFzV0foAaq1QeqWJOQ8F3Kumwhu'
-0s
-0s
