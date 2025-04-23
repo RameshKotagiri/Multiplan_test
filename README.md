@@ -1,4 +1,2 @@
-Set-ExecutionPolicy Bypass -Scope Process -Force
-[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
-Invoke-WebRequest -Uri https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.ps1 -OutFile install.ps1
-.\install.ps1
+oci secrets secret-bundle get --secret-id <your-secret-ocid> --query "data.\"secret-bundle-content\".content" --raw-output | base64 --decode
+*
