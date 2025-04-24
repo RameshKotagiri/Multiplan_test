@@ -1,7 +1,7 @@
 name: OCI Vault Secret Retrieval
 
 on:
-  workflow_dispatch: 
+  workflow_dispatch:
   push:
     branches:
       - feature/create-oci-credential-jenkins
@@ -67,6 +67,12 @@ jobs:
             exit 1
           fi
 
-          echo "::add-mask::$SECRET_CONTENT"
-          echo "secret-content=$SECRET_CONTENT" >> $GITHUB_ENV
+          MASKED_SECRET=$(echo "$SECRET_CONTENT" | tr '\n' '|' | sed 's/|/\\n/g')
+          echo "::add-mask::$MASKED_SECRET"
+
+          {
+            echo 'secret-content<<EOF'
+            echo "$SECRET_CONTENT"
+            echo 'EOF'
+          } >> $GITHUB_ENV
           echo "Secret retrieved successfully"
