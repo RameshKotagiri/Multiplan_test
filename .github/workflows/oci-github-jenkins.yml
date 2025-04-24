@@ -1,0 +1,144 @@
+name: OCI Secret to Jenkins Credential
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/create-oci-credential-jenkins
+
+jobs:
+  create-oci-credential:
+    runs-on: arc-runner-set
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl jq
+
+      - name: Install OCI CLI
+        run: |
+          curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh | \
+          bash -s -- --accept-all-defaults
+          echo "$HOME/bin" >> $GITHUB_PATH
+
+      - name: Configure OCI CLI
+        env:
+          OCI_CLI_USER: ${{ secrets.OCI_USER_OCID }}
+          OCI_CLI_TENANCY: ${{ secrets.OCI_TENANCY_OCID }}
+          OCI_CLI_FINGERPRINT: ${{ secrets.OCI_API_FINGERPRINT }}
+          OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_PRIVATE_KEY }}
+          OCI_CLI_REGION: ${{ secrets.OCI_REGION }}
+        run: |
+          mkdir -p ~/.oci
+          echo "$OCI_CLI_KEY_CONTENT" > ~/.oci/private_key.pem
+          chmod 600 ~/.oci/private_key.pem
+          cat > ~/.oci/config <<EOF
+          [DEFAULT]
+          user=${OCI_CLI_USER}
+          fingerprint=${OCI_CLI_FINGERPRINT}
+          key_file=~/.oci/private_key.pem
+          tenancy=${OCI_CLI_TENANCY}
+          region=${OCI_CLI_REGION}
+          EOF
+
+      - name: Retrieve and Parse Vault Secret
+        env:
+          OCI_VAULT_SECRET_OCID: ${{ secrets.OCI_VAULT_SECRET_OCID }}
+          OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING: "True"
+        run: |
+          SECRET_CONTENT=$(oci secrets secret-bundle get \
+            --secret-id "$OCI_VAULT_SECRET_OCID" \
+            --query "data.\"secret-bundle-content\".content" \
+            --raw-output | base64 --decode)
+
+          if [ -z "$SECRET_CONTENT" ]; then
+            echo "::error::Secret content is empty"
+            exit 1
+          fi
+
+          TENANCY_ID=$(echo "$SECRET_CONTENT" | grep '^tenancy=' | cut -d'=' -f2)
+          USER_ID=$(echo "$SECRET_CONTENT" | grep '^user=' | cut -d'=' -f2 || echo "$OCI_CLI_USER")
+          FINGERPRINT=$(echo "$SECRET_CONTENT" | grep '^fingerprint=' | cut -d'=' -f2)
+          REGION=$(echo "$SECRET_CONTENT" | grep '^region=' | cut -d'=' -f2)
+          PRIVATE_KEY=$(echo "$SECRET_CONTENT" | sed -n '/^private_key=/,/-----END RSA PRIVATE KEY-----/p' | sed 's/^private_key=//')
+
+          echo "::add-mask::$(echo "$TENANCY_ID" | tr '\n' '|' | sed 's/|/\\n/g')"
+          echo "::add-mask::$(echo "$USER_ID" | tr '\n' '|' | sed 's/|/\\n/g')"
+          echo "::add-mask::$(echo "$FINGERPRINT" | tr '\n' '|' | sed 's/|/\\n/g')"
+          echo "::add-mask::$(echo "$PRIVATE_KEY" | tr '\n' '|' | sed 's/|/\\n/g')"
+
+          {
+            echo "TENANCY_ID=$TENANCY_ID"
+            echo "USER_ID=$USER_ID"
+            echo "FINGERPRINT=$FINGERPRINT"
+            echo "REGION=$REGION"
+            echo 'PRIVATE_KEY<<EOF'
+            echo "$PRIVATE_KEY"
+            echo 'EOF'
+          } >> $GITHUB_ENV
+
+      - name: Get Jenkins CSRF Crumb
+        id: crumb
+        env:
+          JENKINS_URL: ${{ secrets.JENKINS_BASE_URL }}
+          JENKINS_USER: ${{ secrets.JENKINS_USER }}
+          JENKINS_API_TOKEN: ${{ secrets.JENKINS_API_TOKEN }}
+        run: |
+          CRUMB_JSON=$(curl -s --user "$JENKINS_USER:$JENKINS_API_TOKEN" "$JENKINS_URL/crumbIssuer/api/json")
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --user "$JENKINS_USER:$JENKINS_API_TOKEN" "$JENKINS_URL/crumbIssuer/api/json")
+          if [ "$HTTP_STATUS" -ne 200 ]; then
+            echo "::error::Failed to fetch Jenkins CSRF crumb. HTTP Status: $HTTP_STATUS"
+            exit 1
+          fi
+          echo "crumb_field=$(echo $CRUMB_JSON | jq -r .crumbRequestField)" >> $GITHUB_OUTPUT
+          echo "crumb_value=$(echo $CRUMB_JSON | jq -r .crumb)" >> $GITHUB_OUTPUT
+
+      - name: Create OCI Credential in Jenkins
+        env:
+          JENKINS_URL: ${{ secrets.JENKINS_BASE_URL }}
+          JENKINS_USER: ${{ secrets.JENKINS_USER }}
+          JENKINS_API_TOKEN: ${{ secrets.JENKINS_API_TOKEN }}
+          CREDENTIAL_ID: "oci-vault-credential"
+          TENANCY_ID: ${{ env.TENANCY_ID }}
+          USER_ID: ${{ env.USER_ID }}
+          FINGERPRINT: ${{ env.FINGERPRINT }}
+          PRIVATE_KEY: ${{ env.PRIVATE_KEY }}
+          REGION: ${{ env.REGION }}
+          CRUMB_FIELD: ${{ steps.crumb.outputs.crumb_field }}
+          CRUMB_VALUE: ${{ steps.crumb.outputs.crumb_value }}
+        run: |
+          PRIVATE_KEY_ESCAPED=$(printf '%s' "$PRIVATE_KEY" | sed ':a;N;$!ba;s/\n/\\n/g')
+
+          cat > credential.xml <<EOF
+          <com.oracle.cloud.baremetal.jenkins.credentials.BaremetalCloudCredentialsImpl>
+            <scope>GLOBAL</scope>
+            <id>$CREDENTIAL_ID</id>
+            <description>OCI Credential from Vault via GitHub Actions</description>
+            <tenantId>$TENANCY_ID</tenantId>
+            <userId>$USER_ID</userId>
+            <fingerprint>$FINGERPRINT</fingerprint>
+            <privateKey>$PRIVATE_KEY_ESCAPED</privateKey>
+            <passPhrase></passPhrase>
+            <region>$REGION</region>
+            <useInstancePrincipal>false</useInstancePrincipal>
+          </com.oracle.cloud.baremetal.jenkins.credentials.BaremetalCloudCredentialsImpl>
+          EOF
+
+          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
+            -X POST "$JENKINS_URL/credentials/store/system/domain/_/createCredentials" \
+            --user "$JENKINS_USER:$JENKINS_API_TOKEN" \
+            -H "Content-Type: application/xml" \
+            -H "$CRUMB_FIELD: $CRUMB_VALUE" \
+            --data @credential.xml)
+
+          HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS" | cut -d':' -f2)
+          if [[ "$HTTP_STATUS" -eq 200 ]]; then
+            echo "OCI credential created successfully with ID: $CREDENTIAL_ID"
+          else
+            echo "::error::Failed to create Jenkins credential. HTTP Status: $HTTP_STATUS"
+            exit 1
+          fi
