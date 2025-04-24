@@ -1,2 +1,5 @@
-MASKED_SECRET=$(echo "$SECRET_CONTENT" | tr '\n' '|' | sed 's/|/\\n/g')
-    echo "::add-mask::$MASKED_SECRET"
+Set-PSReadLineOption -HistorySaveStyle SaveIncrementally
+
+(Get-PSReadLineOption).HistorySavePath
+
+C:\Users\<username>\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt
