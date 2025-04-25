@@ -3,11 +3,12 @@ terraform {
   required_providers {
     oci = {
       source  = "oracle/oci"
-      version = "6.23.0" # Update to the latest version
+      version = "6.23.0"
     }
   }
 }
- 
+
 provider "oci" {
-  config_file_profile = ".OCI"
+  config_file_profile = "DEFAULT"            # or "MyProfile"
+  config_file_path    = "C:/Users/Ramesh/.oci/config"
 }
