@@ -1,14 +1,7 @@
-terraform {
-  required_version = ">= 1.6.3"
-  required_providers {
-    oci = {
-      source  = "oracle/oci"
-      version = "6.23.0"
-    }
-  }
+data "oci_identity_tenancy" "tenancy" {
+  tenancy_id = "ocid1.tenancy.oc1..aaaaaaaaamtvtn7a7y4b7mo7yihimhfbjf5wqhqyzist7djdnkoatxyqkq5aa"
 }
 
-provider "oci" {
-  config_file_profile = "DEFAULT"            # or "MyProfile"
-  config_file_path    = "C:/Users/Ramesh/.oci/config"
+output "tenancy_name" {
+  value = data.oci_identity_tenancy.tenancy.name
 }
