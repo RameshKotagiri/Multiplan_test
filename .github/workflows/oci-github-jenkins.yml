@@ -1,56 +1,218 @@
-Validate Jenkins URL
+name: Create OCI Credential in Jenkins
 
-Run # Ensure JENKINS_URL is not empty and starts with http:// or https://
-  # Ensure JENKINS_URL is not empty and starts with http:// or https://
-  if [[ -z "$JENKINS_URL" ]]; then
-    echo "::error::JENKINS_URL is empty"
-    exit 1
-  fi
-  if ! [[ "$JENKINS_URL" =~ ^https?:// ]]; then
-    echo "::error::JENKINS_URL must start with http:// or https://"
-    exit 1
-  fi
-  # Extract the hostname from the URL
-  HOSTNAME=$(echo "$JENKINS_URL" | sed -E 's|https?://([^/]+).*|\1|')
-  # Check if the hostname includes a port (e.g., hostname:port)
-  HOSTNAME_ONLY=$(echo "$HOSTNAME" | cut -d':' -f1)
-  # Test DNS resolution
-  if ! nslookup "$HOSTNAME_ONLY" >/dev/null 2>&1; then
-    echo "::error::Unable to resolve hostname: $HOSTNAME_ONLY"
-    exit 1
-  fi
-  # Test connectivity to the Jenkins URL
-  CURL_RESPONSE=$(curl -s -w "%{http_code}" --connect-timeout 5 "$JENKINS_URL" -o /dev/null)
-  if [[ "$CURL_RESPONSE" -eq 000 ]]; then
-    echo "::error::Unable to reach Jenkins URL: $JENKINS_URL (curl failed, likely a hostname resolution or network issue)"
-    exit 1
-  fi
-  echo "Jenkins URL validated successfully (HTTP Status: $CURL_RESPONSE)"
-  shell: /usr/bin/bash -e {0}
-  env:
-    TENANCY_ID: ocid1.tenancy.oc1..aaaaaaaayhlzwx4nxan2uv4lm6dydhwrgzbppwvacq4g2oexdafz2ndhvaza
-    USER_ID: ocid1.user.oc1..aaaaaaaafqevhod5hxbcotk2uf63sorxqjc7tqqjikchs3i4kndodhcc7kwa
-    FINGERPRINT: dc:ef:36:d0:cf:33:50:1f:40:4d:0c:4b:82:c1:ec:f1
-    REGION: ***
-    PRIVATE_KEY: -----BEGIN RSA PRIVATE KEY-----
-  2xgF6w8xnff+pbHavPneRFK4Y/r2tP0Veow0+NFzV0foAaq1QeqWJOQ8F3Kumwhu
-  +LnW6SnCJ9+1dl4J8O3SWsOswOKtGpgnHnnjuBf8Vt6Rc7wRiFvAIQWETKMTfvTn
-  dfW5DoU/13Z2T8RbJrqlJP+iaVa8M8hHQFLKeDPJUYskaNWYm2OHBlPykJhLiVEn
-  7eC7SjT58LM+eQlZCzp78n8OdWDlzubZhJK+YHLAKa2nxXxXqt0IZm5CT8K0xtHA
-  SMC1zrSI4d1VoA7cWgvku2JPz4J5uHUOG3kPvAIhM/Vxudg1gFO6DF/I/ChoubgO
-  slOMkOipObFyIZUsJ9U3Lgp7KjxjJXvIP1sqtI5ZgNukUGM8PTmQy3L0J9/ELz52
-  0ywTAFK5mgXmCdI9Crdkg0AjSCvOkueBn/GHppVXriF6icQ5E9dBWRqnHHxRL5vH
-  yM5eieK4108sr4z4HrHMbzgoOpz3DFBo9MjcED2DSB8jE2PhLDa0IqbSxK+Q1OFY
-  iwJvX7oVZWZff+z2NYtpWZMmDpmDVRJZPpekKvL3Joh1sHUZZbX+Hi99sxmnY1CX
-  aEf2KBSgRdHohfs2+jEYtSqes9Wvf66cBy5lCfxzyiCTA4rE6BQxS+QPSLEqOVDp
-  O1bzvhyLqDlAtrLqjnmafpaSUScwAGdrtPWl/u3V5twJ8RzfSnHJybKHmWU+qu1L
-  xMwiU13cqU5LUE+m6hQseQgBkmCFte4+Zn1/lfAPMEFVDTTAQrfVcBGgNM0n88yx
-  8ksJdVCHCHyOcGD3RQhmqTuxod4muHJREuEMAtg8oQ3k2pnx2v1XcSI3TdtD71cM
-  r2AnZR66DttJ3Bc8k6H21nw/8XUHv4vHpvHqlKTIfo+ZZzpKqsvyJIE4QNFcK8DQ
-  Qu/CJxTQ1uXukp6IO7sGzOU5f1KpYYJKKY7o82Fs/1+qdk7lxkdYtzJ9ej5fbUjH
-  GV
-    CREDENTIAL_ID: oci-vault-credential-1745511872
-    JENKINS_URL: ***
-  
-Error: Unable to resolve hostname: cl1vnpcbild4329
-Error: Process completed with exit code 1.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/create-oci-credential-jenkins
+
+jobs:
+  create-oci-credential:
+    runs-on: arc-runner-set
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl jq dnsutils
+
+      - name: Install OCI CLI
+        run: |
+          curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh | \
+          bash -s -- --accept-all-defaults
+          echo "$HOME/bin" >> $GITHUB_PATH
+
+      - name: Configure OCI CLI
+        env:
+          OCI_CLI_USER: ${{ secrets.OCI_USER_OCID }}
+          OCI_CLI_TENANCY: ${{ secrets.OCI_TENANCY_OCID }}
+          OCI_CLI_FINGERPRINT: ${{ secrets.OCI_API_FINGERPRINT }}
+          OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_PRIVATE_KEY }}
+          OCI_CLI_REGION: ${{ secrets.OCI_REGION }}
+          OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING: "True"
+        run: |
+          mkdir -p ~/.oci
+          echo "$OCI_CLI_KEY_CONTENT" > ~/.oci/private_key.pem
+          chmod 600 ~/.oci/private_key.pem
+          cat > ~/.oci/config <<EOF
+          [DEFAULT]
+          user=${OCI_CLI_USER}
+          fingerprint=${OCI_CLI_FINGERPRINT}
+          key_file=~/.oci/private_key.pem
+          tenancy=${OCI_CLI_TENANCY}
+          region=${OCI_CLI_REGION}
+          EOF
+
+      - name: Retrieve and Parse Vault Secret
+        env:
+          OCI_VAULT_SECRET_OCID: ${{ secrets.OCI_VAULT_SECRET_OCID }}
+          OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING: "True"
+        run: |
+          echo "Checking access to secret..."
+          SECRET_NAME=$(oci secrets secret-bundle get \
+            --secret-id "$OCI_VAULT_SECRET_OCID" \
+            --query "data.\"secret-name\"" \
+            --raw-output 2>/dev/null)
+          if [ -z "$SECRET_NAME" ]; then
+            echo "::error::Secret access denied, invalid OCID, or secret does not exist"
+            exit 1
+          fi
+
+          echo "Fetching and decoding secret..."
+          SECRET_CONTENT=$(oci secrets secret-bundle get \
+            --secret-id "$OCI_VAULT_SECRET_OCID" \
+            --query "data.\"secret-bundle-content\".content" \
+            --raw-output | base64 --decode)
+
+          if [ -z "$SECRET_CONTENT" ]; then
+            echo "::error::Secret content is empty"
+            exit 1
+          fi
+
+          # Parse the secret content into individual fields
+          TENANCY_ID=$(echo "$SECRET_CONTENT" | grep '^tenancy=' | cut -d'=' -f2)
+          USER_ID=$(echo "$SECRET_CONTENT" | grep '^user=' | cut -d'=' -f2 || echo "$OCI_CLI_USER")
+          FINGERPRINT=$(echo "$SECRET_CONTENT" | grep '^fingerprint=' | cut -d'=' -f2)
+          REGION=$(echo "$SECRET_CONTENT" | grep '^region=' | cut -d'=' -f2)
+          PRIVATE_KEY=$(echo "$SECRET_CONTENT" | sed -n '/^private_key=/,/-----END RSA PRIVATE KEY-----/p' | sed 's/^private_key=//')
+
+          # Mask each sensitive value
+          TENANCY_ID_MASKED=$(echo "$TENANCY_ID" | tr '\n' '|' | sed 's/|/\\n/g')
+          echo "::add-mask::$TENANCY_ID_MASKED"
+          USER_ID_MASKED=$(echo "$USER_ID" | tr '\n' '|' | sed 's/|/\\n/g')
+          echo "::add-mask::$USER_ID_MASKED"
+          FINGERPRINT_MASKED=$(echo "$FINGERPRINT" | tr '\n' '|' | sed 's/|/\\n/g')
+          echo "::add-mask::$FINGERPRINT_MASKED"
+          PRIVATE_KEY_MASKED=$(echo "$PRIVATE_KEY" | tr '\n' '|' | sed 's/|/\\n/g')
+          echo "::add-mask::$PRIVATE_KEY_MASKED"
+
+          # Write to a temporary file
+          {
+            echo "TENANCY_ID=$TENANCY_ID"
+            echo "USER_ID=$USER_ID"
+            echo "FINGERPRINT=$FINGERPRINT"
+            echo "REGION=$REGION"
+            echo "PRIVATE_KEY<<EOF"
+            echo "$PRIVATE_KEY"
+            echo "EOF"
+            echo "CREDENTIAL_ID=oci-vault-credential-$(date +%s)"
+          } >> secrets.env
+
+          # Append the file contents directly to $GITHUB_ENV
+          cat secrets.env >> $GITHUB_ENV
+          echo "Secret retrieved successfully"
+
+      - name: Validate Jenkins URL
+        env:
+          JENKINS_URL: ${{ secrets.JENKINS_BASE_URL }}
+        run: |
+          # Ensure JENKINS_URL is not empty and starts with http:// or https://
+          if [[ -z "$JENKINS_URL" ]]; then
+            echo "::error::JENKINS_URL is empty"
+            exit 1
+          fi
+          if ! [[ "$JENKINS_URL" =~ ^https?:// ]]; then
+            echo "::error::JENKINS_URL must start with http:// or https://"
+            exit 1
+          fi
+          # Extract the hostname from the URL
+          HOSTNAME=$(echo "$JENKINS_URL" | sed -E 's|https?://([^/]+).*|\1|')
+          # Check if the hostname includes a port (e.g., hostname:port)
+          HOSTNAME_ONLY=$(echo "$HOSTNAME" | cut -d':' -f1)
+          # Test DNS resolution
+          if ! nslookup "$HOSTNAME_ONLY" >/dev/null 2>&1; then
+            echo "::error::Unable to resolve hostname: $HOSTNAME_ONLY"
+            exit 1
+          fi
+          # Test connectivity to the Jenkins URL
+          CURL_RESPONSE=$(curl -s -w "%{http_code}" --connect-timeout 5 "$JENKINS_URL" -o /dev/null)
+          if [[ "$CURL_RESPONSE" -eq 000 ]]; then
+            echo "::error::Unable to reach Jenkins URL: $JENKINS_URL (curl failed, likely a hostname resolution or network issue)"
+            exit 1
+          fi
+          echo "Jenkins URL validated successfully (HTTP Status: $CURL_RESPONSE)"
+
+      - name: Get Jenkins CSRF Crumb
+        id: crumb
+        env:
+          JENKINS_URL: ${{ secrets.JENKINS_BASE_URL }}
+          JENKINS_USER: ${{ secrets.JENKINS_USER }}
+          JENKINS_API_TOKEN: ${{ secrets.JENKINS_API_TOKEN }}
+        run: |
+          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" --user "$JENKINS_USER:$JENKINS_API_TOKEN" "$JENKINS_URL/crumbIssuer/api/json")
+          HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS" | cut -d':' -f2)
+          CRUMB_JSON=$(echo "$RESPONSE" | grep -v "HTTP_STATUS")
+
+          if [ -z "$HTTP_STATUS" ]; then
+            echo "::error::Failed to fetch Jenkins CSRF crumb. No HTTP status returned. Check network connectivity or JENKINS_URL."
+            exit 1
+          fi
+
+          if [ "$HTTP_STATUS" -ne 200 ]; then
+            echo "::error::Failed to fetch Jenkins CSRF crumb. HTTP Status: $HTTP_STATUS"
+            echo "Response: $CRUMB_JSON"
+            exit 1
+          fi
+
+          echo "crumb_field=$(echo "$CRUMB_JSON" | jq -r .crumbRequestField)" >> $GITHUB_OUTPUT
+          echo "crumb_value=$(echo "$CRUMB_JSON" | jq -r .crumb)" >> $GITHUB_OUTPUT
+          echo "Jenkins CSRF crumb fetched successfully"
+
+      - name: Create OCI Credential in Jenkins
+        env:
+          JENKINS_URL: ${{ secrets.JENKINS_BASE_URL }}
+          JENKINS_USER: ${{ secrets.JENKINS_USER }}
+          JENKINS_API_TOKEN: ${{ secrets.JENKINS_API_TOKEN }}
+          CREDENTIAL_ID: ${{ env.CREDENTIAL_ID }}
+          TENANCY_ID: ${{ env.TENANCY_ID }}
+          USER_ID: ${{ env.USER_ID }}
+          FINGERPRINT: ${{ env.FINGERPRINT }}
+          PRIVATE_KEY: ${{ env.PRIVATE_KEY }}
+          REGION: ${{ env.REGION }}
+          CRUMB_FIELD: ${{ steps.crumb.outputs.crumb_field }}
+          CRUMB_VALUE: ${{ steps.crumb.outputs.crumb_value }}
+        run: |
+          # Escape the private key for XML
+          PRIVATE_KEY_ESCAPED=$(printf '%s' "$PRIVATE_KEY" | sed ':a;N;$!ba;s/\n/\\n/g')
+
+          echo "Creating OCI credential in Jenkins with ID: $CREDENTIAL_ID..."
+          cat > credential.xml <<EOF
+          <com.oracle.cloud.baremetal.jenkins.credentials.BaremetalCloudCredentialsImpl>
+            <scope>GLOBAL</scope>
+            <id>$CREDENTIAL_ID</id>
+            <description>OCI Credential from Vault via GitHub Actions</description>
+            <tenantId>$TENANCY_ID</tenantId>
+            <userId>$USER_ID</userId>
+            <fingerprint>$FINGERPRINT</fingerprint>
+            <privateKey>$PRIVATE_KEY_ESCAPED</privateKey>
+            <passPhrase></passPhrase>
+            <region>$REGION</region>
+            <useInstancePrincipal>false</useInstancePrincipal>
+          </com.oracle.cloud.baremetal.jenkins.credentials.BaremetalCloudCredentialsImpl>
+          EOF
+
+          # Debug: Print the XML payload
+          echo "Credential XML:"
+          cat credential.xml
+
+          # Use the system-level endpoint
+          echo "Creating credential at system level..."
+          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
+            -X POST "$JENKINS_URL/credentials/store/system/domain/_/createCredentials" \
+            --user "$JENKINS_USER:$JENKINS_API_TOKEN" \
+            -H "Content-Type: application/xml" \
+            -H "$CRUMB_FIELD: $CRUMB_VALUE" \
+            --data @credential.xml)
+
+          HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS" | cut -d':' -f2)
+          echo "HTTP Status: $HTTP_STATUS"
+          if [[ "$HTTP_STATUS" -eq 200 ]]; then
+            echo "✅ OCI credential created successfully with ID: $CREDENTIAL_ID at system level"
+          else
+            echo "::error::Failed to create Jenkins credential. HTTP Status: $HTTP_STATUS"
+            echo "Response: $(echo "$RESPONSE" | grep -v "HTTP_STATUS")"
+            exit 1
+          fi
