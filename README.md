@@ -1,1 +1,13 @@
-http://cl1vnpcbild4329.multiplan.com:8080/job/OCI-POC/job/OCI-CCP/credentials/store/folder/domain/_/createCredentials
+terraform {
+  required_version = ">= 1.6.3"
+  required_providers {
+    oci = {
+      source  = "oracle/oci"
+      version = "6.23.0" # Update to the latest version
+    }
+  }
+}
+ 
+provider "oci" {
+  config_file_profile = ".OCI"
+}
