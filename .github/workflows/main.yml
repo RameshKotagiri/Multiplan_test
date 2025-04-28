@@ -191,7 +191,7 @@ jobs:
           EOF
 
           RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
-            -X POST "$JENKINS_URL/credentials/store/folder/domain/_/createCredentials" \
+            -X POST "$JENKINS_URL/credentials/store/system/domain/_/createCredentials" \
             --user "$JENKINS_USER:$JENKINS_API_TOKEN" \
             -H "Content-Type: application/xml" \
             -H "$CRUMB_FIELD: $CRUMB_VALUE" \
