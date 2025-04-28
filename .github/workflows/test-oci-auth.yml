@@ -1,78 +1,68 @@
-name: OCI Vault Secret Retrieval
-
-on:
-  workflow_dispatch:
-  push:
-    branches:
-      - feature/create-oci-credential-jenkins
-
-jobs:
-  retrieve-secret:
-    runs-on: arc-runner-set
-
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Setup OCI CLI
-        run: |
-          echo "Installing OCI CLI..."
-          curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh | \
-          bash -s -- --accept-all-defaults
-          echo "$HOME/bin" >> $GITHUB_PATH
-
-      - name: Configure Secure Authentication
+- name: Retrieve Vault Secret using OCI Action
+        id: retrieve-secret
+        uses: oracle-actions/run-oci-cli-command@v1.3.2  # Updated to the latest tag
         env:
-          OCI_CLI_USER: ${{ secrets.OCI_USER_OCID }}
-          OCI_CLI_TENANCY: ${{ secrets.OCI_TENANCY_OCID }}
-          OCI_CLI_FINGERPRINT: ${{ secrets.OCI_API_FINGERPRINT }}
-          OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_PRIVATE_KEY }}
-          OCI_CLI_REGION: ${{ secrets.OCI_REGION }}
-        run: |
-          mkdir -p ~/.oci
-          echo "$OCI_CLI_KEY_CONTENT" > ~/.oci/private_key.pem
-          chmod 600 ~/.oci/private_key.pem
-
-          cat > ~/.oci/config <<EOF
-          [DEFAULT]
-          user=${OCI_CLI_USER}
-          fingerprint=${OCI_CLI_FINGERPRINT}
-          key_file=~/.oci/private_key.pem
-          tenancy=${OCI_CLI_TENANCY}
-          region=${OCI_CLI_REGION}
-          EOF
-
-      - name: Retrieve Vault Secret
-        env:
-          OCI_VAULT_SECRET_OCID: ${{ secrets.OCI_VAULT_SECRET_OCID }}
           OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING: "True"
+        with:
+          oci-cli-user: ${{ secrets.OCI_USER_OCID }}
+          oci-cli-tenancy: ${{ secrets.OCI_TENANCY_OCID }}
+          oci-cli-fingerprint: ${{ secrets.OCI_API_FINGERPRINT }}
+          oci-cli-key-content: ${{ secrets.OCI_PRIVATE_KEY }}
+          oci-cli-region: ${{ secrets.OCI_REGION }}
+          command: |
+            # Check access to the secret
+            if ! oci secrets secret-bundle get \
+              --secret-id "${{ secrets.OCI_VAULT_SECRET_OCID }}" \
+              --query "data.\"secret-name\"" \
+              --raw-output >/dev/null; then
+                echo "::error::Secret access denied or invalid OCID"
+                exit 1
+            fi
+            # Fetch the secret content (Base64-encoded)
+            oci secrets secret-bundle get \
+              --secret-id "${{ secrets.OCI_VAULT_SECRET_OCID }}" \
+              --query "data.\"secret-bundle-content\".content" \
+              --raw-output
+
+      - name: Decode and Parse Vault Secret
+        env:
+          SECRET_CONTENT: ${{ steps.retrieve-secret.outputs.command-output }}
         run: |
-          echo "Checking access to secret..."
-          if ! oci secrets secret-bundle get \
-            --secret-id "$OCI_VAULT_SECRET_OCID" \
-            --query "data.\"secret-name\"" \
-            --raw-output >/dev/null; then
-              echo "::error::Secret access denied or invalid OCID"
-              exit 1
-          fi
+          echo "Decoding secret content..."
+          DECODED_CONTENT=$(echo "$SECRET_CONTENT" | base64 --decode)
 
-          echo "Fetching and decoding secret..."
-          SECRET_CONTENT=$(oci secrets secret-bundle get \
-            --secret-id "$OCI_VAULT_SECRET_OCID" \
-            --query "data.\"secret-bundle-content\".content" \
-            --raw-output | base64 --decode)
-
-          if [ -z "$SECRET_CONTENT" ]; then
+          if [ -z "$DECODED_CONTENT" ]; then
             echo "::error::Secret content is empty after decoding"
             exit 1
           fi
 
-          MASKED_SECRET=$(echo "$SECRET_CONTENT" | tr '\n' '|' | sed 's/|/\\n/g')
-          echo "::add-mask::$MASKED_SECRET"
+          # Parse the secret content into individual fields
+          TENANCY_ID=$(echo "$DECODED_CONTENT" | grep '^tenancy=' | cut -d'=' -f2)
+          USER_ID=$(echo "$DECODED_CONTENT" | grep '^user=' | cut -d'=' -f2 || echo "${{ secrets.OCI_USER_OCID }}")
+          FINGERPRINT=$(echo "$DECODED_CONTENT" | grep '^fingerprint=' | cut -d'=' -f2)
+          REGION=$(echo "$DECODED_CONTENT" | grep '^region=' | cut -d'=' -f2)
+          PRIVATE_KEY=$(echo "$DECODED_CONTENT" | sed -n '/^private_key=/,/-----END RSA PRIVATE KEY-----/p' | sed 's/^private_key=//')
 
-          {
-            echo 'secret-content<<EOF'
-            echo "$SECRET_CONTENT"
-            echo 'EOF'
-          } >> $GITHUB_ENV
-          echo "Secret retrieved successfully"
+          # Mask each sensitive value
+          TENANCY_ID_MASKED=$(echo "$TENANCY_ID" | tr '\n' '|' | sed 's/|/\\n/g')
+          echo "::add-mask::$TENANCY_ID_MASKED"
+          USER_ID_MASKED=$(echo "$USER_ID" | tr '\n' '|' | sed 's/|/\\n/g')
+          echo "::add-mask::$USER_ID_MASKED"
+          FINGERPRINT_MASKED=$(echo "$FINGERPRINT" | tr '\n' '|' | sed 's/|/\\n/g')
+          echo "::add-mask::$FINGERPRINT_MASKED"
+          PRIVATE_KEY_MASKED=$(echo "$PRIVATE_KEY" | tr '\n' '|' | sed 's/|/\\n/g')
+          echo "::add-mask::$PRIVATE_KEY_MASKED"
+
+          # Write to a temporary file to avoid logging in $GITHUB_ENV
+          echo "TENANCY_ID=$TENANCY_ID" >> secrets.env
+          echo "USER_ID=$USER_ID" >> secrets.env
+          echo "FINGERPRINT=$FINGERPRINT" >> secrets.env
+          echo "REGION=$REGION" >> secrets.env
+          echo "PRIVATE_KEY<<EOF" >> secrets.env
+          echo "$PRIVATE_KEY" >> secrets.env
+          echo "EOF" >> secrets.env
+          echo "CREDENTIAL_ID=oci-vault-credential-$(date +%s)" >> secrets.env
+
+          # Source the file into $GITHUB_ENV without logging
+          cat "secrets.env" >> $GITHUB_ENV
+          echo "Secret decoded and parsed successfully"
