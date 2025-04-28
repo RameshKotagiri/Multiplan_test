@@ -1,15 +1,32 @@
-Warning: Unexpected input(s) 'oci-cli-user', 'oci-cli-tenancy', 'oci-cli-fingerprint', 'oci-cli-key-content', 'oci-cli-region', valid inputs are ['command', 'query', 'silent']
-Run oracle-actions/run-oci-cli-command@v1.3.2
-Installing Oracle Cloud Infrastructure CLI
-Executing Oracle Cloud Infrastructure CLI command
+- name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl jq dnsutils python3 python3-pip python-is-python3
+          echo "/home/runner/.local/bin" >> $GITHUB_PATH
 
-/home/runner/_work/_actions/oracle-actions/run-oci-cli-command/v1.3.2/node_modules/@actions/exec/lib/toolrunner.js:592
-                error = new Error(`The process '${this.toolPath}' failed with exit code ${this.processExitCode}`);
-^
-Error: The process '/home/runner/.local/bin/oci' failed with exit code 2
-    at ExecState._setResult (/home/runner/_work/_actions/oracle-actions/run-oci-cli-command/v1.3.2/node_modules/@actions/exec/lib/toolrunner.js:592:1)
-    at ExecState.CheckComplete (/home/runner/_work/_actions/oracle-actions/run-oci-cli-command/v1.3.2/node_modules/@actions/exec/lib/toolrunner.js:575:1)
-    at ChildProcess.<anonymous> (/home/runner/_work/_actions/oracle-actions/run-oci-cli-command/v1.3.2/node_modules/@actions/exec/lib/toolrunner.js:469:1)
-    at ChildProcess.emit (node:events:524:28)
-    at maybeClose (node:internal/child_process:1104:16)
-    at Process.ChildProcess._handle.onexit (node:internal/child_process:304:5)
+      - name: Retrieve Vault Secret using OCI Action
+        id: retrieve-secret
+        uses: oracle-actions/run-oci-cli-command@v1.3.2
+        env:
+          OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING: "True"
+        with:
+          oci-cli-user: ${{ secrets.OCI_USER_OCID }}
+          oci-cli-tenancy: ${{ secrets.OCI_TENANCY_OCID }}
+          oci-cli-fingerprint: ${{ secrets.OCI_API_FINGERPRINT }}
+          oci-cli-key-content: ${{ secrets.OCI_PRIVATE_KEY }}
+          oci-cli-region: ${{ secrets.OCI_REGION }}
+          command: >
+            oci secrets secret-bundle get --secret-id "${{ secrets.OCI_VAULT_SECRET_OCID }}" --query "data.\"secret-bundle-content\".content" --raw-output
+            silent: false
+
+      - name: Decode and Parse Vault Secret
+        env:
+          SECRET_CONTENT: ${{ steps.retrieve-secret.outputs.command-output }}
+        run: |
+          echo "Decoding secret content..."
+          DECODED_CONTENT=$(echo "$SECRET_CONTENT" | base64 --decode)
+
+          if [ -z "$DECODED_CONTENT" ]; then
+            echo "::error::Secret content is empty after decoding"
+            exit 1
+          fi
