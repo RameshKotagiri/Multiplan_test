@@ -1,8 +1,6 @@
 Retrieve vault secret using OCI action
 
-Warning: Unexpected input(s) 'oci-cli-user', 'oci-cli-tenancy', 'oci-cli-fingerprint', 'oci-cli-key-content', 'oci-cli-region', valid inputs are ['command', 'query', 'silent']
 Run oracle-actions/run-oci-cli-command@v1.3.2
-  
 Installing Oracle Cloud Infrastructure CLI
   /home/runner/_work/_tool/Python/3.13.3/x64/bin/python -m pip install oci-cli
   Collecting oci-cli
@@ -50,11 +48,11 @@ Installing Oracle Cloud Infrastructure CLI
   Collecting pycparser (from cffi>=1.12->cryptography<46.0.0,>=3.2.1->oci-cli)
     Downloading pycparser-2.22-py3-none-any.whl.metadata (943 bytes)
   Downloading oci_cli-3.54.5-py3-none-any.whl (54.4 MB)
-     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 54.4/54.4 MB 25.5 MB/s eta 0:00:00
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 54.4/54.4 MB 28.2 MB/s eta 0:00:00
   Downloading click-8.0.4-py3-none-any.whl (97 kB)
   Downloading jmespath-0.10.0-py2.py3-none-any.whl (24 kB)
   Downloading oci-2.150.3-py3-none-any.whl (29.9 MB)
-     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 29.9/29.9 MB 19.0 MB/s eta 0:00:00
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 29.9/29.9 MB 13.6 MB/s eta 0:00:00
   Downloading terminaltables-3.1.10-py2.py3-none-any.whl (15 kB)
   Downloading circuitbreaker-2.1.3-py3-none-any.whl (7.7 kB)
   Downloading cryptography-44.0.2-cp39-abi3-manylinux_2_34_x86_64.whl (4.2 MB)
@@ -73,7 +71,9 @@ Installing Oracle Cloud Infrastructure CLI
   Building wheels for collected packages: PyYAML
     Building wheel for PyYAML (pyproject.toml): started
     Building wheel for PyYAML (pyproject.toml): finished with status 'done'
-    Created wheel for PyYAML: filename=pyyaml-6.0.1-cp313-cp313-linux_x86_64.whl size=45459 sha256=9320bd6e4d5e2a5ac7328dc886ef5547ba0d845abee9a7c4b2217f798f2d3292
+    Created wheel for PyYAML: filename=pyyaml-6.0.1-cp313-cp313-linux_x86_64.whl size=45459 sha256=cf69f9e86edc8b667c59cfd0bfa83df56b4e0ec0f5ceff13af224ee01f81526e
     Stored in directory: /home/runner/.cache/pip/wheels/9c/9e/34/1e1548811b63a9d001469f21797e8b7d5c216d8eb928e7d6ad
   Successfully built PyYAML
   Installing collected packages: wcwidth, pytz, circuitbreaker, types-python-dateutil, terminaltables, six, PyYAML, pycparser, prompt-toolkit, jmespath, click, certifi, python-dateutil, cffi, cryptography, arrow, pyOpenSSL, oci, oci-cli
+  Successfully installed PyYAML-6.0.1 arrow-1.3.0 certifi-2025.4.26 cffi-1.17.1 circuitbreaker-2.1.3 click-8.0.4 cryptography-44.0.2 jmespath-0.10.0 oci-2.150.3 oci-cli-3.54.5 prompt-toolkit-3.0.43 pyOpenSSL-24.3.0 pycparser-2.22 python-dateutil-2.9.0.post0 pytz-2025.2 six-1.17.0 terminaltables-3.1.10 types-python-dateutil-2.9.0.20241206 wcwidth-0.2.13
+Executing Oracle Cloud Infrastructure CLI command
