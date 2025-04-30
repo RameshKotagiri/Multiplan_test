@@ -1,0 +1,77 @@
+name: Create User API
+
+on:
+  push:
+  workflow_dispatch:
+    inputs:
+      user:
+        description: 'User OCID'
+        required: true
+        default: "ocid1.user.oc1..aaaaaaaax6rvbxorg4wq6wodbt6o4gbkh2w4dkr5qutwwccsqjrtntvjntxa"
+
+jobs:
+  create-user-api-key:
+    runs-on: arc-runner-set
+    name: Generate and upload API key for user
+    env:
+      OCI_CLI_USER: ${{ secrets.OCI_CLI_USER }}
+      OCI_CLI_TENANCY: ${{ secrets.OCI_CLI_TENANCY }}
+      OCI_CLI_FINGERPRINT: ${{ secrets.OCI_CLI_FINGERPRINT }}
+      OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_CLI_KEY_CONTENT }}
+      OCI_CLI_REGION: ${{ secrets.OCI_CLI_REGION }}
+      DOMAIN_ENDPOINT: ${{ secrets.DOMAIN_ENDPOINT }}
+      DOMAIN_OCID: ${{ secrets.DOMAIN_OCID }}
+      PASSPHRASE: ${{ secrets.API_KEY_PASSPHRASE }} # Make sure to set this in GitHub Secrets
+
+    steps:
+      - name: Set up environment
+        run: |
+          mkdir -p keys
+      - name: Generate API key pair
+        id: public_key
+        run: |
+          openssl genrsa -aes128 -passout pass:$PASSPHRASE -out keys/private.pem 2048
+          openssl rsa -pubout -in keys/private.pem -passin pass:$PASSPHRASE -out keys/public.pem 
+          # echo "before"
+          # cat keys/public.pem
+          # sed -i '/^$/d' keys/public.pem
+          # ecbo "after"
+          # cat keys/public.pem
+          # #echo "public_key=$(cat keys/public.pem | tr -d '\n')" >> $GITHUB_OUTPUT
+          # #echo "public_key=$(cat keys/public.pem | tr -d '\n')" >> $GITHUB_ENV
+          #echo "public_key=\"$(cat keys/public.pem)\"" >> $GITHUB_ENV
+          {
+            echo "public_key<<EOF"
+            cat keys/public.pem
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+      - name: Extract fingerprint from public key
+        id: fingerprint
+        run: |
+          FINGERPRINT=$(openssl rsa -pubin -in keys/public.pem -pubout -outform DER 2>/dev/null | openssl md5 -c | awk '{print $2}')
+          echo "fingerprint=$FINGERPRINT" >> $GITHUB_OUTPUT
+          echo "${{ steps.public_key.outputs.public_key }}"
+          echo $FINGERPRINT
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      
+      - name: Get user GID from user OCID
+        id: get_gid
+        uses: oracle-actions/run-oci-cli-command@v1.3.2
+        with:
+          command: identity-domains user get --endpoint ${{ env.DOMAIN_ENDPOINT }} --user-id "ocid1.user.oc1..aaaaaaaax6rvbxorg4wq6wodbt6o4gbkh2w4dkr5qutwwccsqjrtntvjntxa"
+          query: 'data.id'
+          silent: false
+
+      - name: Write user payload to file
+        run: |
+          echo "{\"value\": \"${{ steps.get_gid.outputs.raw_output }}\"}" | tr -d '\n\r[:space:]' > user.json
+          cat user.json
+      - name: Upload API Key to Identity Domain User
+        uses: oracle-actions/run-oci-cli-command@v1.3.2
+        with:
+          #command: 'identity-domains api-key create --endpoint ${{ env.DOMAIN_ENDPOINT }} --domain-ocid ${{ env.DOMAIN_OCID }} --schemas "[\"urn:ietf:params:scim:schemas:oracle:idcs:ApiKey\"]" --user file://user.json --fingerprint "${{ steps.fingerprint.outputs.fingerprint }}" --key "\"""${{ steps.public_key.outputs.public_key }}\""""'
+          command: 'identity-domains api-key create --endpoint ${{ env.DOMAIN_ENDPOINT }} --domain-ocid ${{ env.DOMAIN_OCID }} --schemas "[\"urn:ietf:params:scim:schemas:oracle:idcs:ApiKey\"]" --user file://user.json --fingerprint "${{ steps.fingerprint.outputs.fingerprint }}" --key "\"""$(cat keys/public.pem)\""""'
+          silent: false
