@@ -1,25 +1,14 @@
-- name: Generate API key pair
-  id: public_key
-  run: |
-    openssl genrsa -aes128 -passout pass:$PASSPHRASE -out keys/private.pem 2048
-    openssl rsa -pubout -in keys/private.pem -passin pass:$PASSPHRASE -out keys/public.pem
+Run oracle-actions/run-oci-cli-command@v1.3.2
+Installing Oracle Cloud Infrastructure CLI
+Executing Oracle Cloud Infrastructure CLI command
 
-    # Extract and clean the public key (remove headers/footers and flatten)
-    PUBLIC_KEY=$(awk '/-----BEGIN PUBLIC KEY-----/,/-----END PUBLIC KEY-----/ { if (!/-----/) print }' keys/public.pem | tr -d '\n')
-
-    # Pass cleaned key as output
-    echo "public_key=$PUBLIC_KEY" >> $GITHUB_OUTPUT
-
-
-- name: Upload API Key to Identity Domain User
-  uses: oracle-actions/run-oci-cli-command@v1.3.2
-  with:
-    command: |
-      oci identity-domains api-key create \
-        --endpoint "${{ env.DOMAIN_ENDPOINT }}" \
-        --domain-ocid "${{ env.DOMAIN_OCID }}" \
-        --schemas '["urn:ietf:params:scim:schemas:oracle:idcs:ApiKey"]' \
-        --user file://user.json \
-        --fingerprint "${{ steps.fingerprint.outputs.fingerprint }}" \
-        --key "${{ steps.public_key.outputs.public_key }}"
-    silent: false
+/home/runner/_work/_actions/oracle-actions/run-oci-cli-command/v1.3.2/node_modules/@actions/exec/lib/toolrunner.js:592
+                error = new Error(`The process '${this.toolPath}' failed with exit code ${this.processExitCode}`);
+^
+Error: The process '/home/runner/_work/_tool/Python/3.13.3/x64/bin/oci' failed with exit code 1
+    at ExecState._setResult (/home/runner/_work/_actions/oracle-actions/run-oci-cli-command/v1.3.2/node_modules/@actions/exec/lib/toolrunner.js:592:1)
+    at ExecState.CheckComplete (/home/runner/_work/_actions/oracle-actions/run-oci-cli-command/v1.3.2/node_modules/@actions/exec/lib/toolrunner.js:575:1)
+    at ChildProcess.<anonymous> (/home/runner/_work/_actions/oracle-actions/run-oci-cli-command/v1.3.2/node_modules/@actions/exec/lib/toolrunner.js:469:1)
+    at ChildProcess.emit (node:events:524:28)
+    at maybeClose (node:internal/child_process:1104:16)
+    at Process.ChildProcess._handle.onexit (node:internal/child_process:304:5)
