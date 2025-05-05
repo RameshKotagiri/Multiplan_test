@@ -7,7 +7,7 @@ on:
       - feature/create-oci-credential-jenkins
 
 jobs:
-  create-oci-credential:
+  create-oci-credential-in-jenkins:
     runs-on: arc-runner-set
 
     steps:
@@ -24,7 +24,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y curl jq dnsutils
 
-      - name: Retrieve Vault Secret using OCI Action
+      - name: Retrieve Vault Secret
         id: retrieve-secret
         uses: oracle-actions/run-oci-cli-command@v1.3.2
         env:
@@ -87,29 +87,18 @@ jobs:
           JENKINS_URL: ${{ secrets.JENKINS_BASE_URL }}
         run: |
           # Ensure JENKINS_URL is not empty and starts with http:// or https://
-          if [[ -z "$JENKINS_URL" ]]; then
-            echo "::error::JENKINS_URL is empty"
+          if [[ -z "$JENKINS_URL" ]] || ! [[ "$JENKINS_URL" =~ ^https?:// ]]; then
+            echo "::error::JENKINS_URL is empty or invalid"
             exit 1
           fi
-          if ! [[ "$JENKINS_URL" =~ ^https?:// ]]; then
-            echo "::error::JENKINS_URL must start with http:// or https://"
-            exit 1
-          fi
-          # Extract the hostname from the URL
-          HOSTNAME=$(echo "$JENKINS_URL" | sed -E 's|https?://([^/]+).*|\1|')
-          # Check if the hostname includes a port (e.g., hostname:port)
-          HOSTNAME_ONLY=$(echo "$HOSTNAME" | cut -d':' -f1)
-          # Test DNS resolution
-          if ! nslookup "$HOSTNAME_ONLY" >/dev/null 2>&1; then
-            echo "::error::Unable to resolve hostname: $HOSTNAME_ONLY"
-            exit 1
-          fi
+
           # Test connectivity to the Jenkins URL
           CURL_RESPONSE=$(curl -s -w "%{http_code}" --connect-timeout 5 "$JENKINS_URL" -o /dev/null)
           if [[ "$CURL_RESPONSE" -eq 000 ]]; then
             echo "::error::Unable to reach Jenkins URL: $JENKINS_URL (curl failed, likely a hostname resolution or network issue)"
             exit 1
           fi
+
           echo "Jenkins URL validated successfully (HTTP Status: $CURL_RESPONSE)"
 
       - name: Get Jenkins CSRF Crumb
@@ -180,6 +169,7 @@ jobs:
 
           HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS" | cut -d':' -f2)
           echo "HTTP Status: $HTTP_STATUS"
+
           if [[ "$HTTP_STATUS" -eq 200 ]]; then
             echo "OCI credential created successfully with ID: $CREDENTIAL_ID"
           else
