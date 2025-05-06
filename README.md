@@ -1,89 +1,20 @@
-4m 31s
-Run oracle-actions/run-oci-cli-command@v1.3.2
-  
-Installing Oracle Cloud Infrastructure CLI
-  /home/runner/_work/_tool/Python/3.13.3/x64/bin/python -m pip install oci-cli
-  Collecting oci-cli
-    Downloading oci_cli-3.55.0-py3-none-any.whl.metadata (7.1 kB)
-  Collecting oci==2.151.0 (from oci-cli)
-    Downloading oci-2.151.0-py3-none-any.whl.metadata (5.3 kB)
-  Collecting arrow>=1.0.0 (from oci-cli)
-    Downloading arrow-1.3.0-py3-none-any.whl.metadata (7.5 kB)
-  Collecting certifi>=2025.1.31 (from oci-cli)
-    Downloading certifi-2025.4.26-py3-none-any.whl.metadata (2.5 kB)
-  Collecting click==8.0.4 (from oci-cli)
-    Downloading click-8.0.4-py3-none-any.whl.metadata (3.2 kB)
-  Collecting cryptography<46.0.0,>=3.2.1 (from oci-cli)
-    Downloading cryptography-44.0.3-cp39-abi3-manylinux_2_34_x86_64.whl.metadata (5.7 kB)
-  Collecting jmespath==0.10.0 (from oci-cli)
-    Downloading jmespath-0.10.0-py2.py3-none-any.whl.metadata (8.0 kB)
-  Collecting python-dateutil<3.0.0,>=2.5.3 (from oci-cli)
-    Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl.metadata (8.4 kB)
-  Collecting pytz>=2016.10 (from oci-cli)
-    Downloading pytz-2025.2-py2.py3-none-any.whl.metadata (22 kB)
-  Collecting six>=1.15.0 (from oci-cli)
-    Downloading six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)
-  Collecting terminaltables==3.1.10 (from oci-cli)
-    Downloading terminaltables-3.1.10-py2.py3-none-any.whl.metadata (3.5 kB)
-  Collecting pyOpenSSL<25.0.0,>=17.5.0 (from oci-cli)
-    Downloading pyOpenSSL-24.3.0-py3-none-any.whl.metadata (15 kB)
-  Collecting PyYAML<=6.0.1,>=5.4 (from oci-cli)
-    Downloading PyYAML-6.0.1.tar.gz (125 kB)
-    Installing build dependencies: started
-    Installing build dependencies: finished with status 'done'
-    Getting requirements to build wheel: started
-    Getting requirements to build wheel: finished with status 'done'
-    Preparing metadata (pyproject.toml): started
-    Preparing metadata (pyproject.toml): finished with status 'done'
-  Collecting prompt-toolkit<=3.0.43,>=3.0.38 (from oci-cli)
-    Downloading prompt_toolkit-3.0.43-py3-none-any.whl.metadata (6.5 kB)
-  Collecting circuitbreaker<3.0.0,>=1.3.1 (from oci==2.151.0->oci-cli)
-    Downloading circuitbreaker-2.1.3-py3-none-any.whl.metadata (8.0 kB)
-  Collecting cffi>=1.12 (from cryptography<46.0.0,>=3.2.1->oci-cli)
-    Downloading cffi-1.17.1-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (1.5 kB)
-  Collecting wcwidth (from prompt-toolkit<=3.0.43,>=3.0.38->oci-cli)
-    Downloading wcwidth-0.2.13-py2.py3-none-any.whl.metadata (14 kB)
-  Collecting types-python-dateutil>=2.8.10 (from arrow>=1.0.0->oci-cli)
-    Downloading types_python_dateutil-2.9.0.20241206-py3-none-any.whl.metadata (2.1 kB)
-  Collecting pycparser (from cffi>=1.12->cryptography<46.0.0,>=3.2.1->oci-cli)
-    Downloading pycparser-2.22-py3-none-any.whl.metadata (943 bytes)
-  Downloading oci_cli-3.55.0-py3-none-any.whl (54.9 MB)
-     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 54.9/54.9 MB 44.1 MB/s eta 0:00:00
-  Downloading click-8.0.4-py3-none-any.whl (97 kB)
-  Downloading jmespath-0.10.0-py2.py3-none-any.whl (24 kB)
-  Downloading oci-2.151.0-py3-none-any.whl (30.1 MB)
-     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 30.1/30.1 MB 25.5 MB/s eta 0:00:00
-  Downloading terminaltables-3.1.10-py2.py3-none-any.whl (15 kB)
-  Downloading circuitbreaker-2.1.3-py3-none-any.whl (7.7 kB)
-  Downloading cryptography-44.0.3-cp39-abi3-manylinux_2_34_x86_64.whl (4.2 MB)
-     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.2/4.2 MB 14.0 MB/s eta 0:00:00
-  Downloading prompt_toolkit-3.0.43-py3-none-any.whl (386 kB)
-  Downloading pyOpenSSL-24.3.0-py3-none-any.whl (56 kB)
-  Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl (229 kB)
-  Downloading arrow-1.3.0-py3-none-any.whl (66 kB)
-  Downloading certifi-2025.4.26-py3-none-any.whl (159 kB)
-  Downloading cffi-1.17.1-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (479 kB)
-  Downloading pytz-2025.2-py2.py3-none-any.whl (509 kB)
-  Downloading six-1.17.0-py2.py3-none-any.whl (11 kB)
-  Downloading types_python_dateutil-2.9.0.20241206-py3-none-any.whl (14 kB)
-  Downloading pycparser-2.22-py3-none-any.whl (117 kB)
-  Downloading wcwidth-0.2.13-py2.py3-none-any.whl (34 kB)
-  Building wheels for collected packages: PyYAML
-    Building wheel for PyYAML (pyproject.toml): started
-    Building wheel for PyYAML (pyproject.toml): finished with status 'done'
-    Created wheel for PyYAML: filename=pyyaml-6.0.1-cp313-cp313-linux_x86_64.whl size=45461 sha256=33fb436fc1fe9c3b022e730d37d5b5730bfb584b1026f7d47e6c2cc26678aaac
-    Stored in directory: /home/runner/.cache/pip/wheels/9c/9e/34/1e1548811b63a9d001469f21797e8b7d5c216d8eb928e7d6ad
-  Successfully built PyYAML
-  Installing collected packages: wcwidth, pytz, circuitbreaker, types-python-dateutil, terminaltables, six, PyYAML, pycparser, prompt-toolkit, jmespath, click, certifi, python-dateutil, cffi, cryptography, arrow, pyOpenSSL, oci, oci-cli
-  Successfully installed PyYAML-6.0.1 arrow-1.3.0 certifi-2025.4.26 cffi-1.17.1 circuitbreaker-2.1.3 click-8.0.4 cryptography-44.0.3 jmespath-0.10.0 oci-2.151.0 oci-cli-3.55.0 prompt-toolkit-3.0.43 pyOpenSSL-24.3.0 pycparser-2.22 python-dateutil-2.9.0.post0 pytz-2025.2 six-1.17.0 terminaltables-3.1.10 types-python-dateutil-2.9.0.20241206 wcwidth-0.2.13
-Executing Oracle Cloud Infrastructure CLI command
-/home/runner/_work/_actions/oracle-actions/run-oci-cli-command/v1.3.2/node_modules/@actions/exec/lib/toolrunner.js:592
-                error = new Error(`The process '${this.toolPath}' failed with exit code ${this.processExitCode}`);
-^
-Error: The process '/home/runner/_work/_tool/Python/3.13.3/x64/bin/oci' failed with exit code 1
-    at ExecState._setResult (/home/runner/_work/_actions/oracle-actions/run-oci-cli-command/v1.3.2/node_modules/@actions/exec/lib/toolrunner.js:592:1)
-    at ExecState.CheckComplete (/home/runner/_work/_actions/oracle-actions/run-oci-cli-command/v1.3.2/node_modules/@actions/exec/lib/toolrunner.js:575:1)
-    at ChildProcess.<anonymous> (/home/runner/_work/_actions/oracle-actions/run-oci-cli-command/v1.3.2/node_modules/@actions/exec/lib/toolrunner.js:469:1)
-    at ChildProcess.emit (node:events:524:28)
-    at maybeClose (node:internal/child_process:1104:16)
-    at Process.ChildProcess._handle.onexit (node:internal/child_process:304:5)
+- name: Debug Credential Endpoint
+  env:
+    JENKINS_URL: ${{ secrets.JENKINS_BASE_URL }}
+    JENKINS_USER: ${{ secrets.JENKINS_USER }}
+    JENKINS_API_TOKEN: ${{ secrets.JENKINS_API_TOKEN }}
+    CRUMB_FIELD: ${{ steps.crumb.outputs.crumb_field }}
+    CRUMB_VALUE: ${{ steps.crumb.outputs.crumb_value }}
+  run: |
+    echo "Testing endpoint 1: $JENKINS_URL/job/OCI-POC/job/OCI-CCP/credentials/store/folder/domain/_/createCredentials"
+    curl -s -I --user "$JENKINS_USER:$JENKINS_API_TOKEN" \
+      -H "$CRUMB_FIELD: $CRUMB_VALUE" \
+      "$JENKINS_URL/job/OCI-POC/job/OCI-CCP/credentials/store/folder/domain/_/createCredentials"
+    echo "Testing endpoint 2: $JENKINS_URL/job/OCI-POC/job/OCI-CCP/credentials/domain/_/createCredentials"
+    curl -s -I --user "$JENKINS_USER:$JENKINS_API_TOKEN" \
+      -H "$CRUMB_FIELD: $CRUMB_VALUE" \
+      "$JENKINS_URL/job/OCI-POC/job/OCI-CCP/credentials/domain/_/createCredentials"
+    echo "Testing endpoint 3: $JENKINS_URL/job/OCI-POC/job/OCI-CCP/credentials/createCredentials"
+    curl -s -I --user "$JENKINS_USER:$JENKINS_API_TOKEN" \
+      -H "$CRUMB_FIELD: $CRUMB_VALUE" \
+      "$JENKINS_URL/job/OCI-POC/job/OCI-CCP/credentials/createCredentials"
