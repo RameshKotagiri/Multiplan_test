@@ -6,6 +6,7 @@ Cache-Control: must-revalidate,no-cache,no-store
 Content-Type: text/html;charset=iso-8859-1
 Content-Length: 520
 Server: Jetty(9.4.42.v20210604)
+
 Testing endpoint 2: ***/job/OCI-POC/job/OCI-CCP/credentials/domain/_/createCredentials
 HTTP/1.1 404 Not Found
 X-Content-Type-Options: nosniff
@@ -13,6 +14,7 @@ Cache-Control: must-revalidate,no-cache,no-store
 Content-Type: text/html;charset=iso-8859-1
 Content-Length: 507
 Server: Jetty(9.4.42.v20210604)
+
 Testing endpoint 3: ***/job/OCI-POC/job/OCI-CCP/credentials/createCredentials
 HTTP/1.1 404 Not Found
 X-Content-Type-Options: nosniff
