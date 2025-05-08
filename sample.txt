@@ -1,0 +1,11 @@
+Hi DevOps Team,
+I’m working on automating the creation of OCI credentials in the Jenkins folder OCI-POC/OCI-CCP using the API. However, I’m encountering a 404 "Not Found" error with the endpoints I’ve tried so far. Here are the endpoints I’ve tested:
+$JENKINS_URL/job/OCI-POC/job/OCI-CCP/credentials/store/folder/domain/_/createCredentials → 404 Not Found  
+
+$JENKINS_URL/job/OCI-POC/job/OCI-CCP/credentials/domain/_/createCredentials → 404 Not Found  
+
+$JENKINS_URL/job/OCI-POC/job/OCI-CCP/credentials/createCredentials → 404 Not Found
+
+I can confirm the folder exists, and the credential creation UI is accessible at $JENKINS_URL/job/OCI-POC/job/OCI-CCP/credentials/store/folder/domain/_/newCredentials. However, I’m unable to find the correct API endpoint for programmatically creating credentials in this folder.
+Could you please help me identify the correct endpoint for creating credentials in the OCI-POC/OCI-CCP folder via the Jenkins API?
+
