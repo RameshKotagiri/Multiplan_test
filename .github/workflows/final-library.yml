@@ -36,7 +36,7 @@ jobs:
           OCI_CLI_REGION: ${{ secrets.OCI_REGION }}
         with:
           command:
-            oci secrets secret-bundle get --secret-id "${{ secrets.OCI_VAULT_SECRET_OCID }}" --query "data.\"secret-bundle-content\".content" --raw-output
+            oci secrets secret-bundle get --secret-id "${{ secrets.OCI_VAULT_SECRET_OCID }}" --query "data.\"secret-bundle-content\".content" --raw-output --debug
 
       - name: Decode and Parse Vault Secret
         env:
@@ -44,7 +44,7 @@ jobs:
           OCI_CLI_USER: ${{ secrets.OCI_USER_OCID }}
         run: |
           echo "Decoding secret content..."
-          DECODED_CONTENT=$(echo "$SECRET_CONTENT" | base64 --decode)
+          DECODED_CONTENT="$SECRET_CONTENT"
 
           if [ -z "$DECODED_CONTENT" ]; then
             echo "::error::Secret content is empty after decoding"
@@ -161,7 +161,7 @@ jobs:
           EOF
 
           RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
-            -X POST "$JENKINS_URL/credentials/store/system/domain/_/createCredentials" \
+            -X POST "$JENKINS_URL/view/OCI-POC/job/OCI-CCP/credentials/store/folder/domain/_/createCredentials" \
             --user "$JENKINS_USER:$JENKINS_API_TOKEN" \
             -H "Content-Type: application/xml" \
             -H "$CRUMB_FIELD: $CRUMB_VALUE" \
