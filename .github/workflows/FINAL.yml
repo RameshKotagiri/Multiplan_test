@@ -11,19 +11,23 @@ jobs:
     runs-on: arc-runner-set
 
     steps:
+      # Checkout the repository to access the workflow files
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      # Set up Python for running OCI CLI commands
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.13'
 
+      # Install required dependencies for the workflow
       - name: Install Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y curl jq dnsutils
 
+      # Retrieve the secret from OCI Vault
       - name: Retrieve Vault Secret
         id: retrieve-secret
         uses: oracle-actions/run-oci-cli-command@v1.3.2
@@ -35,16 +39,20 @@ jobs:
           OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_PRIVATE_KEY }}
           OCI_CLI_REGION: ${{ secrets.OCI_REGION }}
         with:
-          command:
-            oci secrets secret-bundle get --secret-id "${{ secrets.OCI_VAULT_SECRET_OCID }}" --query "data.\"secret-bundle-content\".content" --raw-output --debug
+          command: >
+            oci secrets secret-bundle get
+            --secret-id "${{ secrets.OCI_VAULT_SECRET_OCID }}"
+            --query "data.\"secret-bundle-content\".content"
+            --raw-output
 
-      - name: Decode and Parse Vault Secret
+      # Parse the retrieved vault secret into individual fields
+      - name: Parse Vault Secret
         env:
           SECRET_CONTENT: ${{ steps.retrieve-secret.outputs.raw_output }}
           OCI_CLI_USER: ${{ secrets.OCI_USER_OCID }}
         run: |
           echo "Decoding secret content..."
-          DECODED_CONTENT="$SECRET_CONTENT"
+          DECODED_CONTENT=$(echo "$SECRET_CONTENT" | base64 --decode)
 
           if [ -z "$DECODED_CONTENT" ]; then
             echo "::error::Secret content is empty after decoding"
@@ -82,25 +90,7 @@ jobs:
           cat "secrets.env" >> $GITHUB_ENV
           echo "Secret retrieved successfully"
 
-      - name: Validate Jenkins URL
-        env:
-          JENKINS_URL: ${{ secrets.JENKINS_BASE_URL }}
-        run: |
-          # Ensure JENKINS_URL is not empty and starts with http:// or https://
-          if [[ -z "$JENKINS_URL" ]] || ! [[ "$JENKINS_URL" =~ ^https?:// ]]; then
-            echo "::error::JENKINS_URL is empty or invalid"
-            exit 1
-          fi
-
-          # Test connectivity to the Jenkins URL
-          CURL_RESPONSE=$(curl -s -w "%{http_code}" --connect-timeout 5 "$JENKINS_URL" -o /dev/null)
-          if [[ "$CURL_RESPONSE" -eq 000 ]]; then
-            echo "::error::Unable to reach Jenkins URL: $JENKINS_URL (curl failed, likely a hostname resolution or network issue)"
-            exit 1
-          fi
-
-          echo "Jenkins URL validated successfully (HTTP Status: $CURL_RESPONSE)"
-
+      # Fetch the Jenkins CSRF crumb for secure API requests
       - name: Get Jenkins CSRF Crumb
         id: crumb
         env:
@@ -108,26 +98,23 @@ jobs:
           JENKINS_USER: ${{ secrets.JENKINS_USER }}
           JENKINS_API_TOKEN: ${{ secrets.JENKINS_API_TOKEN }}
         run: |
-          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" --user "$JENKINS_USER:$JENKINS_API_TOKEN" "$JENKINS_URL/crumbIssuer/api/json")
+          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
+            --user "$JENKINS_USER:$JENKINS_API_TOKEN" \
+            "$JENKINS_URL/crumbIssuer/api/json")
+          
           HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS" | cut -d':' -f2)
           CRUMB_JSON=$(echo "$RESPONSE" | grep -v "HTTP_STATUS")
 
-          if [ -z "$HTTP_STATUS" ]; then
-            echo "::error::Failed to fetch Jenkins CSRF crumb. No HTTP status returned. Check network connectivity or JENKINS_URL."
-            exit 1
-          fi
-
-          if [ "$HTTP_STATUS" -ne 200 ]; then
-            echo "::error::Failed to fetch Jenkins CSRF crumb. HTTP Status: $HTTP_STATUS"
-            echo "Response: $CRUMB_JSON"
+          if [[ "$HTTP_STATUS" -ne 200 ]]; then
+            echo "::error::Failed to fetch CSRF crumb. HTTP Status: $HTTP_STATUS, Response: $CRUMB_JSON"
             exit 1
           fi
 
           echo "crumb_field=$(echo "$CRUMB_JSON" | jq -r .crumbRequestField)" >> $GITHUB_OUTPUT
           echo "crumb_value=$(echo "$CRUMB_JSON" | jq -r .crumb)" >> $GITHUB_OUTPUT
-          echo "Jenkins CSRF crumb fetched successfully"
 
-      - name: Create OCI Credential in Jenkins
+      # Create the OCI credential in the Jenkins folder OCI-POC/OCI-CCP
+      - name: Create OCI Credential in Jenkins Folder
         env:
           JENKINS_URL: ${{ secrets.JENKINS_BASE_URL }}
           JENKINS_USER: ${{ secrets.JENKINS_USER }}
@@ -144,12 +131,12 @@ jobs:
           # Escape the private key for XML
           PRIVATE_KEY_ESCAPED=$(printf '%s' "$PRIVATE_KEY" | sed ':a;N;$!ba;s/\n/\\n/g')
 
-          echo "Creating OCI credential in Jenkins with ID: $CREDENTIAL_ID..."
+          # Create the XML payload for the credential
           cat > credential.xml <<EOF
           <com.oracle.cloud.baremetal.jenkins.credentials.BaremetalCloudCredentialsImpl>
             <scope>GLOBAL</scope>
             <id>$CREDENTIAL_ID</id>
-            <description>OCI Credential from Vault via GitHub Actions</description>
+            <description>OCI Credential from Vault</description>
             <tenantId>$TENANCY_ID</tenantId>
             <userId>$USER_ID</userId>
             <fingerprint>$FINGERPRINT</fingerprint>
@@ -160,6 +147,7 @@ jobs:
           </com.oracle.cloud.baremetal.jenkins.credentials.BaremetalCloudCredentialsImpl>
           EOF
 
+          # Send the API request to create the credential
           RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
             -X POST "$JENKINS_URL/view/OCI-POC/job/OCI-CCP/credentials/store/folder/domain/_/createCredentials" \
             --user "$JENKINS_USER:$JENKINS_API_TOKEN" \
@@ -168,12 +156,12 @@ jobs:
             --data @credential.xml)
 
           HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS" | cut -d':' -f2)
-          echo "HTTP Status: $HTTP_STATUS"
-
-          if [[ "$HTTP_STATUS" -eq 200 ]]; then
-            echo "OCI credential created successfully with ID: $CREDENTIAL_ID"
-          else
-            echo "::error::Failed to create Jenkins credential. HTTP Status: $HTTP_STATUS"
-            echo "Response: $(echo "$RESPONSE" | grep -v "HTTP_STATUS")"
+          if [[ "$HTTP_STATUS" -ne 200 ]]; then
+            echo "::error::Failed to create Jenkins credential. HTTP Status: $HTTP_STATUS, Response: $(echo "$RESPONSE" | grep -v "HTTP_STATUS")"
             exit 1
           fi
+
+          echo "OCI credential created successfully in folder with ID: $CREDENTIAL_ID"
+
+          # Clean up sensitive files
+          rm -f credential.xml
