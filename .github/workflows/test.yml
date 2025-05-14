@@ -1,4 +1,144 @@
-PRIVATE_KEY=$(echo "$secret_value" | awk '
-/^private_key=-----BEGIN RSA PRIVATE KEY-----/ {flag=1; sub(/^private_key=/, ""); print; next}
-/-----END RSA PRIVATE KEY-----/ {print; flag=0}
-flag')
+#!/bin/bash
+
+# Define variables
+USER_OCID="ocid1.user.oc1..aaaaaaaacawq3yo4d2qoyn6n4dqbqpmump3htnbr6lomafgueki3ffcuxwyq"
+DOMAIN_ENDPOINT="https://idcs-a6c939c27ca742e3a845b216fae5a6dd.us-phoenix-idcs-3.identity.us-phoenix-1.oci.oraclecloud.com:443"
+TENANCY_OCID="ocid1.tenancy.oc1..aaaaaaaamtvtn7a7y4b7mo7yihimhfbjf5wqhqyzi5t7djdnkoatxyqkq5aa"
+DOMAIN_OCID="ocid1.domain.oc1..aaaaaaaa2anu353fmmbyltjhl7gnxulecjrpa4225njqjcensvpyoiqllqqq"
+VAULT_OCID="ocid1.vault.oc1.phx.efuab5uwaagi6.abyhqljsfhfryhdi5rbc5jtg733dnldberdznwxvlyhyuqvauwwkamdfbyza"
+KEY_ID="ocid1.key.oc1.phx.efuab5uwaagi6.abyhqljraxq5n2n5rm47rdus5nvth2uvnfqyp7yadi32eu25uxwzgmi5dxoq"
+COMPARTMENT_ID="ocid1.compartment.oc1..aaaaaaaa6epgbx4ujj5fyqokmrstwwm3gizipwfxkkqpc3zpozwgzmf6ddaq"
+SECRET_ID="ocid1.vaultsecret.oc1.phx.amaaaaaa5qoaj4ianzso4qrpkbdhoedcl2pf3ognbujrjn52ez4srpw2dvyq"
+REGION="us-phoenix-1"
+PASSPHRASE="admin123"
+
+# Key paths
+KEY_DIR="$HOME/workspace"
+PRIVATE_KEY_PATH="$KEY_DIR/private_key.pem"
+PUBLIC_KEY_PATH="$KEY_DIR/public_key.pem"
+SECRET_PAYLOAD="$KEY_DIR/secret.txt"
+
+# Get the GID of the Identity Domain user
+GID=$(oci identity-domains user get \
+  --endpoint "$DOMAIN_ENDPOINT" \
+  --user-id "$USER_OCID" \
+  --query 'data.id' \
+  --raw-output)
+
+echo "User GID=$GID"
+
+# Get all API keys with id 
+API_KEYS_JSON=$(oci identity-domains api-keys list \
+  --endpoint "$DOMAIN_ENDPOINT" \
+  --filter "user.value eq \"$GID\"" \
+  --output json )
+echo "keys=$API_KEYS_JSON"
+
+KEYS=$(echo "$API_KEYS_JSON" | jq -r '{
+  total: (.data.resources | length),
+  keys: [.data.resources[] | {id, created: .meta.created}]
+}')
+
+echo "$KEYS" | jq .
+
+TOTAL_KEYS=$(echo "$KEYS" | jq -r '.total')
+echo "Total API keys found: $TOTAL_KEYS"
+
+if [ "$TOTAL_KEYS" -eq 0 ]; then
+  echo "No API keys found. Proceeding with new api key creation"
+
+else 
+  # Get age of the oldest key
+  echo "$API_KEYS_JSON" | jq -r '.data.resources[] | [.meta.created, .id]'
+  OLDEST_LINE=$(echo "$API_KEYS_JSON" | jq -r '.data.resources[] | [.meta.created, .id] | @tsv' |sort | head -n 1)
+  OLDEST_DATE=$(echo "$OLDEST_LINE" | awk '{print $1}')
+  echo "Oldest date: $OLDEST_DATE"
+  OLDEST_ID=$(echo "$OLDEST_LINE" | awk '{print $2}')
+  echo " oldest id: $OLDEST_ID"
+  CLEANED_DATE=$(echo "$OLDEST_DATE" | sed -E 's/T/ /; s/\.[0-9]+Z//; s/^"//; s/"$//')
+  echo $CLEANED_DATE
+
+  CURRENT_DATE=$(date +%s)
+  echo $CURRENT_DATE
+  CREATED_DATE=$(date -d "$CLEANED_DATE" +%s)
+  echo $CLEANED_DATE
+  DAYS_SINCE=$(( (CURRENT_DATE - CREATED_DATE) / 86400 ))
+  echo "Days old: $DAYS_SINCE"
+
+  # Skip rotation if the oldest key is less than 30 days
+  if [ "$DAYS_SINCE" -lt 30 ]; then
+    echo "Oldest key is only $DAYS_SINCE day(s) old. Skipping rotation."
+    exit 0
+  fi
+
+  # If 3 keys, delete the oldest key 
+  if [ "$TOTAL_KEYS" -eq 3 ]; then  
+    if [ -n "$OLDEST_ID" ]; then
+      echo "Deleting oldest API key: $OLDEST_ID"
+      oci identity-domains api-key delete \
+        --api-key-id "$OLDEST_ID" \
+        --endpoint "$DOMAIN_ENDPOINT" \
+        --force
+    else
+      echo "No API Key found to delete"
+    fi
+  fi
+  echo "Proceeding with new API key creation"
+fi
+
+# Generate a new API key pair after deletion
+openssl genrsa -aes128 -passout pass:$PASSPHRASE -out "$PRIVATE_KEY_PATH" 2048
+openssl rsa -pubout -in "$PRIVATE_KEY_PATH" -passin pass:$PASSPHRASE -out "$PUBLIC_KEY_PATH"
+
+# Extracting the fingerprint
+FINGERPRINT=$(openssl rsa -pubin -in "$PUBLIC_KEY_PATH" -pubout -outform DER | openssl md5 -c | awk '{print$2}')
+echo "Fingerprint: $FINGERPRINT"
+
+# Uploading public key to Identity domain user
+oci identity-domains api-key create \
+  --endpoint "$DOMAIN_ENDPOINT" \
+  --domain-ocid "$DOMAIN_OCID" \
+  --key "$(cat $PUBLIC_KEY_PATH)" \
+  --fingerprint "$FINGERPRINT" \
+  --schemas '["urn:ietf:params:scim:schemas:oracle:idcs:ApiKey"]' \
+  --user "$(echo "{\"value\":\"$GID\"}")"
+
+# Create Ordered Secret Content file
+{
+echo "user=$USER_OCID"
+echo "fingerprint=$FINGERPRINT"
+echo "tenancy=$TENANCY_OCID"
+echo "region=$REGION"
+echo -n "private_key="; cat "$PRIVATE_KEY_PATH" | tr -d '\r'
+echo -n "public_key="; cat "$PUBLIC_KEY_PATH" | tr -d '\r'
+} > "$SECRET_PAYLOAD"
+
+# Update secrets in OCI vault
+oci vault secret update-base64 \
+  --secret-id "$SECRET_ID" \
+  --secret-content-content "$(cat "$SECRET_PAYLOAD" | base64)" \
+  --secret-content-name "api_key_$(date +%s)" \
+  --secret-content-stage CURRENT \
+  --defined-tags '{
+    "ent-tags": {
+      "Owner": "corecloudplatform@multiplan.com",
+      "ServiceNow": "cloud services and support",
+      "Support": "corecloudplatform@multiplan.com",
+      "SX": "no",
+      "OpHrs": "24/7",
+      "HT": "no",
+      "Name": "test",
+      "Department": "infrastructure",
+      "CostCenter": "5020",
+      "DClass": "private",
+      "Environment": "poc",
+      "RequestedBy": "cces-421",
+      "Application": "test",
+      "S1": "no",
+      "S2": "no"
+    }
+  }' \
+  --force
+
+echo "API key rotated and secret updated in OCI vault successfully"
+
