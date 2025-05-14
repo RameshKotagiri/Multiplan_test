@@ -1,77 +1,148 @@
-name: Create User API
+#!/bin/bash
 
-on:
-  push:
-  workflow_dispatch:
-    inputs:
-      user:
-        description: 'User OCID'
-        required: true
-        default: "ocid1.user.oc1..aaaaaaaax6rvbxorg4wq6wodbt6o4gbkh2w4dkr5qutwwccsqjrtntvjntxa"
+# Define the Vault name and other parameters
+vault_name="ccp-poc-vlt-001"
+compartment_id="ocid1.compartment.oc1..aaaaaaaa6epgbx4ujj5fyqokmrstwwm3gizipwfxkkqpc3zpozwgzmf6ddaq"  # Replace with your actual compartment ID
 
-jobs:
-  create-user-api-key:
-    runs-on: arc-runner-set
-    name: Generate and upload API key for user
-    env:
-      OCI_CLI_USER: ${{ secrets.OCI_CLI_USER }}
-      OCI_CLI_TENANCY: ${{ secrets.OCI_CLI_TENANCY }}
-      OCI_CLI_FINGERPRINT: ${{ secrets.OCI_CLI_FINGERPRINT }}
-      OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_CLI_KEY_CONTENT }}
-      OCI_CLI_REGION: ${{ secrets.OCI_CLI_REGION }}
-      DOMAIN_ENDPOINT: ${{ secrets.DOMAIN_ENDPOINT }}
-      DOMAIN_OCID: ${{ secrets.DOMAIN_OCID }}
-      PASSPHRASE: ${{ secrets.API_KEY_PASSPHRASE }} # Make sure to set this in GitHub Secrets
+# List vaults to get the vault ID based on the Vault name
+vaults_json=$(oci kms management vault list --compartment-id $compartment_id --config-file /mnt/c/Temp/config)
 
-    steps:
-      - name: Set up environment
-        run: |
-          mkdir -p keys
-      - name: Generate API key pair
-        id: public_key
-        run: |
-          openssl genrsa -aes128 -passout pass:$PASSPHRASE -out keys/private.pem 2048
-          openssl rsa -pubout -in keys/private.pem -passin pass:$PASSPHRASE -out keys/public.pem 
-          # echo "before"
-          # cat keys/public.pem
-          # sed -i '/^$/d' keys/public.pem
-          # ecbo "after"
-          # cat keys/public.pem
-          # #echo "public_key=$(cat keys/public.pem | tr -d '\n')" >> $GITHUB_OUTPUT
-          # #echo "public_key=$(cat keys/public.pem | tr -d '\n')" >> $GITHUB_ENV
-          #echo "public_key=\"$(cat keys/public.pem)\"" >> $GITHUB_ENV
-          {
-            echo "public_key<<EOF"
-            cat keys/public.pem
-            echo "EOF"
-          } >> $GITHUB_OUTPUT
-      - name: Extract fingerprint from public key
-        id: fingerprint
-        run: |
-          FINGERPRINT=$(openssl rsa -pubin -in keys/public.pem -pubout -outform DER 2>/dev/null | openssl md5 -c | awk '{print $2}')
-          echo "fingerprint=$FINGERPRINT" >> $GITHUB_OUTPUT
-          echo "${{ steps.public_key.outputs.public_key }}"
-          echo $FINGERPRINT
-      
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-      
-      - name: Get user GID from user OCID
-        id: get_gid
-        uses: oracle-actions/run-oci-cli-command@v1.3.2
-        with:
-          command: identity-domains user get --endpoint ${{ env.DOMAIN_ENDPOINT }} --user-id "ocid1.user.oc1..aaaaaaaax6rvbxorg4wq6wodbt6o4gbkh2w4dkr5qutwwccsqjrtntvjntxa"
-          query: 'data.id'
-          silent: false
+# Print the JSON output for debugging
+echo "Vaults JSON: $vaults_json"
 
-      - name: Write user payload to file
-        run: |
-          echo "{\"value\": \"${{ steps.get_gid.outputs.raw_output }}\"}" | tr -d '\n\r[:space:]' > user.json
-          cat user.json
-      - name: Upload API Key to Identity Domain User
-        uses: oracle-actions/run-oci-cli-command@v1.3.2
-        with:
-          #command: 'identity-domains api-key create --endpoint ${{ env.DOMAIN_ENDPOINT }} --domain-ocid ${{ env.DOMAIN_OCID }} --schemas "[\"urn:ietf:params:scim:schemas:oracle:idcs:ApiKey\"]" --user file://user.json --fingerprint "${{ steps.fingerprint.outputs.fingerprint }}" --key "\"""${{ steps.public_key.outputs.public_key }}\""""'
-          command: 'identity-domains api-key create --endpoint ${{ env.DOMAIN_ENDPOINT }} --domain-ocid ${{ env.DOMAIN_OCID }} --schemas "[\"urn:ietf:params:scim:schemas:oracle:idcs:ApiKey\"]" --user file://user.json --fingerprint "${{ steps.fingerprint.outputs.fingerprint }}" --key "\"""$(cat keys/public.pem)\""""'
-          silent: false
+# Parse the vaults and get the vault ID if the vault name matches
+vault_id=$(echo "$vaults_json" | jq -r --arg vault_name "$vault_name" '.data[] | select(.["display-name"] == $vault_name) | .id')
+
+# Check if vault ID was found
+if [ -z "$vault_id" ]; then
+    echo "Vault with display name '$vault_name' not found."
+    exit 1
+else
+    echo "Vault ID: $vault_id"
+fi
+
+# Function to fetch secret OCIDs based on the secret names
+get_secrets() {
+    secrets_json=$(oci vault secret list --compartment-id $compartment_id --config-file /mnt/c/Temp/config)
+
+    # Print the raw JSON output for debugging
+    echo "$secrets_json"
+
+    # Check if the JSON output is empty or contains errors
+    if [ -z "$secrets_json" ]; then
+        echo "Error: No secrets found or failed to fetch secrets."
+        exit 1
+    fi
+
+    # Validate the JSON structure
+    echo "$secrets_json" | jq . > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        echo "Error: Invalid JSON structure."
+        exit 1
+    fi
+
+    # Parse the JSON to extract secret names and IDs
+    echo "$secrets_json" | jq -r '.data[] | "\(.["secret-name"]):\(.id)"'
+}
+
+# Fetch all secrets from the vault
+secrets_list=$(get_secrets)
+
+# Output the secret names and IDs
+echo "Secrets List: $secrets_list"
+
+# Store secret OCIDs in a variable dynamically
+declare -A secrets_id
+while IFS= read -r line; do
+    secret_name=$(echo $line | awk -F':' '{print $1}')
+    secret_id=$(echo $line | awk -F':' '{print $2}')
+    secrets_id[$secret_name]=$secret_id
+done <<< "$secrets_list"
+
+# Debugging: Print the secrets_id array
+echo "Secrets ID Array: ${!secrets_id[@]}"
+
+# Function to fetch secret value based on the secret name
+get_secret_value_by_name() {
+    local secret_name=$1
+    local secret_ocid=${secrets_id[$secret_name]}
+    SECRET_CONTENT=$(oci secrets secret-bundle get --secret-id $secret_ocid --query "data.\"secret-bundle-content\".content" --raw-output --config-file /mnt/c/Temp/config )
+    DECODED_CONTENT=$(echo "$SECRET_CONTENT" | base64 --decode)
+    if [ -z "$DECODED_CONTENT" ]; then
+        echo "::error::Secret content is empty after decoding"
+        exit 1
+    fi
+
+    echo "$DECODED_CONTENT"
+}
+
+# Keywords to search for in secret names
+name_keywords=("ccp-poc-idu-002")
+
+# Keywords to search for in secret content values
+content_keywords=("user" "fingerprint" "privatekey")
+
+# Fetch the secret values using OCI CLI with API key authentication
+declare -A decoded_secret_values
+declare -a matched_secret_details
+
+for secret_name in "${!secrets_id[@]}"; do
+    match=false
+    for keyword in "${name_keywords[@]}"; do
+        if [[ "$secret_name" == *"$keyword"* ]]; then
+            match=true
+            break
+        fi
+    done
+
+    if $match; then
+        echo "Fetching secret value for secret name: $secret_name"
+        secret_value=$(get_secret_value_by_name $secret_name)
+
+        if [ $? -eq 0 ] && [ -n "$secret_value" ]; then
+            # Parse the secret content into individual fields
+            USER_ID=$(echo "$secret_value" | grep '^user=' | cut -d'=' -f2)
+            FINGERPRINT=$(echo "$secret_value" | grep '^fingerprint=' | cut -d'=' -f2)
+            PRIVATE_KEY=$(echo "$secret_value" | sed -n '/^private_key=/,/-----END RSA PRIVATE KEY-----/p' | sed 's/^private_key=//')
+            TENANCY_ID=$(echo "$secret_value" | grep '^tenancy=' | cut -d'=' -f2)
+
+            # Store the parsed values in the decoded_secret_values array
+            decoded_secret_values["user"]=$USER_ID
+            decoded_secret_values["fingerprint"]=$FINGERPRINT
+            decoded_secret_values["privatekey"]=$PRIVATE_KEY
+            decoded_secret_values["tenancy"]=$TENANCY_ID
+
+            matched_secret_details+=("Name: $secret_name | ID: ${secrets_id[$secret_name]} | Value: $secret_value")
+            echo "Added to matched_secret_details: Name: $secret_name | ID: ${secrets_id[$secret_name]} | Value: $secret_value"
+        else
+            echo "Failed to fetch or decode secret value for secret name $secret_name. Skipping."
+        fi
+    fi
+done
+
+# Debugging: Print the decoded secret values
+for key in "${!decoded_secret_values[@]}"; do
+    echo "$key: ${decoded_secret_values[$key]}"
+done
+
+# Escape control characters in the values
+for key in "${!decoded_secret_values[@]}"; do
+    decoded_secret_values[$key]=$(echo "${decoded_secret_values[$key]}" | jq -R .)
+done
+
+# Build the JSON payload dynamically for all matched secrets
+json_payload=$(jq -n --argjson vars "$(for key in "${!decoded_secret_values[@]}"; do echo "{\"key\": \"$key\", \"value\": ${decoded_secret_values[$key]}, \"description\": \"new POC variable\", \"category\": \"terraform\", \"hcl\": false, \"sensitive\": false}"; done | jq -s .)" '{data: {type: "vars", attributes: $vars}}')
+
+# Print the JSON payload
+echo "JSON Payload: $json_payload"
+
+# Use the secret values in the curl command
+curlExe="/usr/bin/curl"
+
+$curlExe \
+  --header "Authorization: Bearer XrXl7dsD1IcMXg.atlasv1.lgFJD9xUznidcZ6g0Xq5zp79k4VO0iqKQFnUs54kUhefPwrQ7S9p6nusyXX0cjmXSxk" \
+  --header "Content-Type: application/vnd.api+json" \
+  --request POST \
+  --data "$json_payload" \
+  https://app.terraform.io/api/v2/workspaces/ws-8v5u1xxQFjFWXWSc/vars
+ 
