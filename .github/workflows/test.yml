@@ -1,5 +1,4 @@
-echo "Parsed Fields:"
-echo "USER_ID=$USER_ID"
-echo "FINGERPRINT=$FINGERPRINT"
-echo "PRIVATE_KEY starts with: $(echo "$PRIVATE_KEY" | head -n 1)"
-echo "TENANCY_ID=$TENANCY_ID"
+PRIVATE_KEY=$(echo "$secret_value" | awk '
+/^private_key=-----BEGIN RSA PRIVATE KEY-----/ {flag=1; sub(/^private_key=/, ""); print; next}
+/-----END RSA PRIVATE KEY-----/ {print; flag=0}
+flag')
