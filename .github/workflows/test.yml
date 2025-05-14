@@ -1,144 +1,85 @@
-#!/bin/bash
+name: Rotate User API Keys
 
-# Define variables
-USER_OCID="ocid1.user.oc1..aaaaaaaacawq3yo4d2qoyn6n4dqbqpmump3htnbr6lomafgueki3ffcuxwyq"
-DOMAIN_ENDPOINT="https://idcs-a6c939c27ca742e3a845b216fae5a6dd.us-phoenix-idcs-3.identity.us-phoenix-1.oci.oraclecloud.com:443"
-TENANCY_OCID="ocid1.tenancy.oc1..aaaaaaaamtvtn7a7y4b7mo7yihimhfbjf5wqhqyzi5t7djdnkoatxyqkq5aa"
-DOMAIN_OCID="ocid1.domain.oc1..aaaaaaaa2anu353fmmbyltjhl7gnxulecjrpa4225njqjcensvpyoiqllqqq"
-VAULT_OCID="ocid1.vault.oc1.phx.efuab5uwaagi6.abyhqljsfhfryhdi5rbc5jtg733dnldberdznwxvlyhyuqvauwwkamdfbyza"
-KEY_ID="ocid1.key.oc1.phx.efuab5uwaagi6.abyhqljraxq5n2n5rm47rdus5nvth2uvnfqyp7yadi32eu25uxwzgmi5dxoq"
-COMPARTMENT_ID="ocid1.compartment.oc1..aaaaaaaa6epgbx4ujj5fyqokmrstwwm3gizipwfxkkqpc3zpozwgzmf6ddaq"
-SECRET_ID="ocid1.vaultsecret.oc1.phx.amaaaaaa5qoaj4ianzso4qrpkbdhoedcl2pf3ognbujrjn52ez4srpw2dvyq"
-REGION="us-phoenix-1"
-PASSPHRASE="admin123"
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/api-key-test
 
-# Key paths
-KEY_DIR="$HOME/workspace"
-PRIVATE_KEY_PATH="$KEY_DIR/private_key.pem"
-PUBLIC_KEY_PATH="$KEY_DIR/public_key.pem"
-SECRET_PAYLOAD="$KEY_DIR/secret.txt"
+jobs:
+  rotate-user-api-keys:
+    runs-on: arc-runner-set
 
-# Get the GID of the Identity Domain user
-GID=$(oci identity-domains user get \
-  --endpoint "$DOMAIN_ENDPOINT" \
-  --user-id "$USER_OCID" \
-  --query 'data.id' \
-  --raw-output)
+    steps:
+      # Checkout the repository to access the workflow files
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-echo "User GID=$GID"
+      # Set up Python for running OCI CLI commands
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
 
-# Get all API keys with id 
-API_KEYS_JSON=$(oci identity-domains api-keys list \
-  --endpoint "$DOMAIN_ENDPOINT" \
-  --filter "user.value eq \"$GID\"" \
-  --output json )
-echo "keys=$API_KEYS_JSON"
+      # Install required dependencies for the workflow
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl jq openssl
 
-KEYS=$(echo "$API_KEYS_JSON" | jq -r '{
-  total: (.data.resources | length),
-  keys: [.data.resources[] | {id, created: .meta.created}]
-}')
+      # Configure with OCI
+      - name: verify OCI CLI
+        id: verify-oci
+        uses: oracle-actions/run-oci-cli-command@v1.3.2
+        env:
+          OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING: "True"
+          OCI_CLI_USER: ${{ secrets.OCI_USER_OCID }}
+          OCI_CLI_TENANCY: ${{ secrets.OCI_TENANCY_OCID }}
+          OCI_CLI_FINGERPRINT: ${{ secrets.OCI_API_FINGERPRINT }}
+          OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_PRIVATE_KEY }}
+          OCI_CLI_REGION: ${{ secrets.OCI_REGION }}
+          DOMAIN_ENDPOINT: ${{ secrets.DOMAIN_ENDPOINT}}
+        with:
+          command: >
+            oci identity-domains user get 
+              --endpoint "${{ secrets.DOMAIN_ENDPOINT}}"
+              --user-id "${{ secrets.OCI_USER_OCID }}"
+              
 
-echo "$KEYS" | jq .
+      # Set key file paths
+      - name: set key file paths
+        run: |
+          KEY_DIR="$HOME/keys"
+          mkdir -p "$KEY_DIR"
+          PRIVATE_KEY_PATH="$KEY_DIR/private_key.pem"
+          PUBLIC_KEY_PATH="$KEY_DIR/public_key.pem"
+          SECRET_PAYLOAD="$KEY_DIR/secret.txt"
 
-TOTAL_KEYS=$(echo "$KEYS" | jq -r '.total')
-echo "Total API keys found: $TOTAL_KEYS"
+          echo "PRIVATE_KEY_PATH=$PEIVATE_KEY_PATH" >> $GITHUB_ENV
+          echo "PUBLIC_KEY_PATH=$PUBLIC_KEY_PATH" >> $GITHUB_ENV
+          echo "SECRET_PAYLOAD=$SECRET_PAYLOAD" >> $GITHUB_ENV
+          echo "KEY_DIR=$KEY_DIR" >>$GITHUB_ENV
 
-if [ "$TOTAL_KEYS" -eq 0 ]; then
-  echo "No API keys found. Proceeding with new api key creation"
+      # To get the user GID
+      - name: get user GID
+        run: |
+          echo DOMAIN_ENDPOINT=${{ secrets.DOMAIN_ENDPOINT }}
+        
+          --------------------------------------
 
-else 
-  # Get age of the oldest key
-  echo "$API_KEYS_JSON" | jq -r '.data.resources[] | [.meta.created, .id]'
-  OLDEST_LINE=$(echo "$API_KEYS_JSON" | jq -r '.data.resources[] | [.meta.created, .id] | @tsv' |sort | head -n 1)
-  OLDEST_DATE=$(echo "$OLDEST_LINE" | awk '{print $1}')
-  echo "Oldest date: $OLDEST_DATE"
-  OLDEST_ID=$(echo "$OLDEST_LINE" | awk '{print $2}')
-  echo " oldest id: $OLDEST_ID"
-  CLEANED_DATE=$(echo "$OLDEST_DATE" | sed -E 's/T/ /; s/\.[0-9]+Z//; s/^"//; s/"$//')
-  echo $CLEANED_DATE
+Errors:
 
-  CURRENT_DATE=$(date +%s)
-  echo $CURRENT_DATE
-  CREATED_DATE=$(date -d "$CLEANED_DATE" +%s)
-  echo $CLEANED_DATE
-  DAYS_SINCE=$(( (CURRENT_DATE - CREATED_DATE) / 86400 ))
-  echo "Days old: $DAYS_SINCE"
+Run oracle-actions/run-oci-cli-command@v1.3.2
+Installing Oracle Cloud Infrastructure CLI
+Executing Oracle Cloud Infrastructure CLI command
 
-  # Skip rotation if the oldest key is less than 30 days
-  if [ "$DAYS_SINCE" -lt 30 ]; then
-    echo "Oldest key is only $DAYS_SINCE day(s) old. Skipping rotation."
-    exit 0
-  fi
-
-  # If 3 keys, delete the oldest key 
-  if [ "$TOTAL_KEYS" -eq 3 ]; then  
-    if [ -n "$OLDEST_ID" ]; then
-      echo "Deleting oldest API key: $OLDEST_ID"
-      oci identity-domains api-key delete \
-        --api-key-id "$OLDEST_ID" \
-        --endpoint "$DOMAIN_ENDPOINT" \
-        --force
-    else
-      echo "No API Key found to delete"
-    fi
-  fi
-  echo "Proceeding with new API key creation"
-fi
-
-# Generate a new API key pair after deletion
-openssl genrsa -aes128 -passout pass:$PASSPHRASE -out "$PRIVATE_KEY_PATH" 2048
-openssl rsa -pubout -in "$PRIVATE_KEY_PATH" -passin pass:$PASSPHRASE -out "$PUBLIC_KEY_PATH"
-
-# Extracting the fingerprint
-FINGERPRINT=$(openssl rsa -pubin -in "$PUBLIC_KEY_PATH" -pubout -outform DER | openssl md5 -c | awk '{print$2}')
-echo "Fingerprint: $FINGERPRINT"
-
-# Uploading public key to Identity domain user
-oci identity-domains api-key create \
-  --endpoint "$DOMAIN_ENDPOINT" \
-  --domain-ocid "$DOMAIN_OCID" \
-  --key "$(cat $PUBLIC_KEY_PATH)" \
-  --fingerprint "$FINGERPRINT" \
-  --schemas '["urn:ietf:params:scim:schemas:oracle:idcs:ApiKey"]' \
-  --user "$(echo "{\"value\":\"$GID\"}")"
-
-# Create Ordered Secret Content file
-{
-echo "user=$USER_OCID"
-echo "fingerprint=$FINGERPRINT"
-echo "tenancy=$TENANCY_OCID"
-echo "region=$REGION"
-echo -n "private_key="; cat "$PRIVATE_KEY_PATH" | tr -d '\r'
-echo -n "public_key="; cat "$PUBLIC_KEY_PATH" | tr -d '\r'
-} > "$SECRET_PAYLOAD"
-
-# Update secrets in OCI vault
-oci vault secret update-base64 \
-  --secret-id "$SECRET_ID" \
-  --secret-content-content "$(cat "$SECRET_PAYLOAD" | base64)" \
-  --secret-content-name "api_key_$(date +%s)" \
-  --secret-content-stage CURRENT \
-  --defined-tags '{
-    "ent-tags": {
-      "Owner": "corecloudplatform@multiplan.com",
-      "ServiceNow": "cloud services and support",
-      "Support": "corecloudplatform@multiplan.com",
-      "SX": "no",
-      "OpHrs": "24/7",
-      "HT": "no",
-      "Name": "test",
-      "Department": "infrastructure",
-      "CostCenter": "5020",
-      "DClass": "private",
-      "Environment": "poc",
-      "RequestedBy": "cces-421",
-      "Application": "test",
-      "S1": "no",
-      "S2": "no"
-    }
-  }' \
-  --force
-
-echo "API key rotated and secret updated in OCI vault successfully"
-
+/home/runner/_work/_actions/oracle-actions/run-oci-cli-command/v1.3.2/node_modules/@actions/exec/lib/toolrunner.js:592
+                error = new Error(`The process '${this.toolPath}' failed with exit code ${this.processExitCode}`);
+^
+Error: The process '/home/runner/_work/_tool/Python/3.13.3/x64/bin/oci' failed with exit code 2
+    at ExecState._setResult (/home/runner/_work/_actions/oracle-actions/run-oci-cli-command/v1.3.2/node_modules/@actions/exec/lib/toolrunner.js:592:1)
+    at ExecState.CheckComplete (/home/runner/_work/_actions/oracle-actions/run-oci-cli-command/v1.3.2/node_modules/@actions/exec/lib/toolrunner.js:575:1)
+    at ChildProcess.<anonymous> (/home/runner/_work/_actions/oracle-actions/run-oci-cli-command/v1.3.2/node_modules/@actions/exec/lib/toolrunner.js:469:1)
+    at ChildProcess.emit (node:events:524:28)
+    at maybeClose (node:internal/child_process:1104:16)
+    at Process.ChildProcess._handle.onexit (node:internal/child_process:304:5)
