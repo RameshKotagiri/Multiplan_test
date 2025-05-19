@@ -1,85 +1,85 @@
-name: Rotate User API Keys
+name: Create TFC Project and Workspaces
 
 on:
-  workflow_dispatch:
-  push:
-    branches:
-      - feature/api-key-test
+  workflow_dispatch:  # Manual trigger
 
 jobs:
-  rotate-user-api-keys:
-    runs-on: arc-runner-set
+  create-resources:
+    runs-on: ubuntu-latest
 
     steps:
-      # Checkout the repository to access the workflow files
-      - name: Checkout Repository
+      - name: Checkout Repo
         uses: actions/checkout@v4
 
-      # Set up Python for running OCI CLI commands
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
 
-      # Install required dependencies for the workflow
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y curl jq openssl
-
-      # Configure with OCI
-      - name: verify OCI CLI
-        id: verify-oci
-        uses: oracle-actions/run-oci-cli-command@v1.3.2
+      - name: Create Project and Workspaces
         env:
-          OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING: "True"
-          OCI_CLI_USER: ${{ secrets.OCI_USER_OCID }}
-          OCI_CLI_TENANCY: ${{ secrets.OCI_TENANCY_OCID }}
-          OCI_CLI_FINGERPRINT: ${{ secrets.OCI_API_FINGERPRINT }}
-          OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_PRIVATE_KEY }}
-          OCI_CLI_REGION: ${{ secrets.OCI_REGION }}
-          DOMAIN_ENDPOINT: ${{ secrets.DOMAIN_ENDPOINT}}
-        with:
-          command: >
-            oci identity-domains user get 
-              --endpoint "${{ secrets.DOMAIN_ENDPOINT}}"
-              --user-id "${{ secrets.OCI_USER_OCID }}"
-              
-
-      # Set key file paths
-      - name: set key file paths
+          TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+          TFC_ORG: ${{ secrets.TFC_ORG }}
+          PROJECT_NAME: sample-project-api
+          WORKSPACES: 'dev,qa,prod'  # Comma-separated workspace names
         run: |
-          KEY_DIR="$HOME/keys"
-          mkdir -p "$KEY_DIR"
-          PRIVATE_KEY_PATH="$KEY_DIR/private_key.pem"
-          PUBLIC_KEY_PATH="$KEY_DIR/public_key.pem"
-          SECRET_PAYLOAD="$KEY_DIR/secret.txt"
+          echo "🔧 Creating Project: $PROJECT_NAME"
 
-          echo "PRIVATE_KEY_PATH=$PEIVATE_KEY_PATH" >> $GITHUB_ENV
-          echo "PUBLIC_KEY_PATH=$PUBLIC_KEY_PATH" >> $GITHUB_ENV
-          echo "SECRET_PAYLOAD=$SECRET_PAYLOAD" >> $GITHUB_ENV
-          echo "KEY_DIR=$KEY_DIR" >>$GITHUB_ENV
+          project_response=$(curl -s --request POST \
+            --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/projects" \
+            --header "Authorization: Bearer $TFC_TOKEN" \
+            --header "Content-Type: application/vnd.api+json" \
+            --data "{
+              \"data\": {
+                \"type\": \"projects\",
+                \"attributes\": {
+                  \"name\": \"$PROJECT_NAME\"
+                }
+              }
+            }")
 
-      # To get the user GID
-      - name: get user GID
-        run: |
-          echo DOMAIN_ENDPOINT=${{ secrets.DOMAIN_ENDPOINT }}
-        
-          --------------------------------------
+          echo "$project_response" | jq .
 
-Errors:
+          project_id=$(echo "$project_response" | jq -r '.data.id')
 
-Run oracle-actions/run-oci-cli-command@v1.3.2
-Installing Oracle Cloud Infrastructure CLI
-Executing Oracle Cloud Infrastructure CLI command
+          if [[ "$project_id" == "null" ]]; then
+            echo "❌ Project creation failed."
+            exit 1
+          fi
 
-/home/runner/_work/_actions/oracle-actions/run-oci-cli-command/v1.3.2/node_modules/@actions/exec/lib/toolrunner.js:592
-                error = new Error(`The process '${this.toolPath}' failed with exit code ${this.processExitCode}`);
-^
-Error: The process '/home/runner/_work/_tool/Python/3.13.3/x64/bin/oci' failed with exit code 2
-    at ExecState._setResult (/home/runner/_work/_actions/oracle-actions/run-oci-cli-command/v1.3.2/node_modules/@actions/exec/lib/toolrunner.js:592:1)
-    at ExecState.CheckComplete (/home/runner/_work/_actions/oracle-actions/run-oci-cli-command/v1.3.2/node_modules/@actions/exec/lib/toolrunner.js:575:1)
-    at ChildProcess.<anonymous> (/home/runner/_work/_actions/oracle-actions/run-oci-cli-command/v1.3.2/node_modules/@actions/exec/lib/toolrunner.js:469:1)
-    at ChildProcess.emit (node:events:524:28)
-    at maybeClose (node:internal/child_process:1104:16)
-    at Process.ChildProcess._handle.onexit (node:internal/child_process:304:5)
+          echo "✅ Project created with ID: $project_id"
+
+          IFS=',' read -ra workspace_names <<< "$WORKSPACES"
+
+          for workspace in "${workspace_names[@]}"; do
+            echo "🔧 Creating workspace: $workspace"
+
+            workspace_response=$(curl -s --request POST \
+              --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/workspaces" \
+              --header "Authorization: Bearer $TFC_TOKEN" \
+              --header "Content-Type: application/vnd.api+json" \
+              --data "{
+                \"data\": {
+                  \"type\": \"workspaces\",
+                  \"attributes\": {
+                    \"name\": \"$workspace\"
+                  },
+                  \"relationships\": {
+                    \"project\": {
+                      \"data\": {
+                        \"id\": \"$project_id\",
+                        \"type\": \"projects\"
+                      }
+                    }
+                  }
+                }
+              }")
+
+            echo "$workspace_response" | jq .
+
+            workspace_id=$(echo "$workspace_response" | jq -r '.data.id')
+
+            if [[ "$workspace_id" == "null" ]]; then
+              echo "❌ Workspace $workspace creation failed."
+            else
+              echo "✅ Workspace $workspace created with ID: $workspace_id"
+            fi
+          done
