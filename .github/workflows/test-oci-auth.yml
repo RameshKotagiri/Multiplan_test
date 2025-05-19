@@ -1,68 +1,50 @@
-- name: Retrieve Vault Secret using OCI Action
-        id: retrieve-secret
-        uses: oracle-actions/run-oci-cli-command@v1.3.2  # Updated to the latest tag
-        env:
-          OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING: "True"
-        with:
-          oci-cli-user: ${{ secrets.OCI_USER_OCID }}
-          oci-cli-tenancy: ${{ secrets.OCI_TENANCY_OCID }}
-          oci-cli-fingerprint: ${{ secrets.OCI_API_FINGERPRINT }}
-          oci-cli-key-content: ${{ secrets.OCI_PRIVATE_KEY }}
-          oci-cli-region: ${{ secrets.OCI_REGION }}
-          command: |
-            # Check access to the secret
-            if ! oci secrets secret-bundle get \
-              --secret-id "${{ secrets.OCI_VAULT_SECRET_OCID }}" \
-              --query "data.\"secret-name\"" \
-              --raw-output >/dev/null; then
-                echo "::error::Secret access denied or invalid OCID"
-                exit 1
-            fi
-            # Fetch the secret content (Base64-encoded)
-            oci secrets secret-bundle get \
-              --secret-id "${{ secrets.OCI_VAULT_SECRET_OCID }}" \
-              --query "data.\"secret-bundle-content\".content" \
-              --raw-output
+name: Create TFC Project and Workspaces
 
-      - name: Decode and Parse Vault Secret
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/create-tfc-project-and-workspace
+
+jobs:
+  create-resources:
+    runs-on: arc-runner-set
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Create Terraform Cloud Project
         env:
-          SECRET_CONTENT: ${{ steps.retrieve-secret.outputs.command-output }}
+          TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+          TFC_ORG: ${{ secrets.TFC_ORG }}
+          PROJECT_NAME: sample-project-api
         run: |
-          echo "Decoding secret content..."
-          DECODED_CONTENT=$(echo "$SECRET_CONTENT" | base64 --decode)
+          echo "🚀 Creating Terraform Cloud Project: $PROJECT_NAME"
 
-          if [ -z "$DECODED_CONTENT" ]; then
-            echo "::error::Secret content is empty after decoding"
+          response=$(curl -s --request POST \
+            --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/projects" \
+            --header "Authorization: Bearer $TFC_TOKEN" \
+            --header "Content-Type: application/vnd.api+json" \
+            --data "{
+              \"data\": {
+                \"type\": \"projects\",
+                \"attributes\": {
+                  \"name\": \"$PROJECT_NAME\"
+                }
+              }
+            }")
+
+          echo "$response" | jq .
+
+          project_id=$(echo "$response" | jq -r '.data.id')
+
+          if [[ "$project_id" == "null" ]]; then
+            echo "❌ Failed to create project."
             exit 1
+          else
+            echo "✅ Project created with ID: $project_id"
           fi
-
-          # Parse the secret content into individual fields
-          TENANCY_ID=$(echo "$DECODED_CONTENT" | grep '^tenancy=' | cut -d'=' -f2)
-          USER_ID=$(echo "$DECODED_CONTENT" | grep '^user=' | cut -d'=' -f2 || echo "${{ secrets.OCI_USER_OCID }}")
-          FINGERPRINT=$(echo "$DECODED_CONTENT" | grep '^fingerprint=' | cut -d'=' -f2)
-          REGION=$(echo "$DECODED_CONTENT" | grep '^region=' | cut -d'=' -f2)
-          PRIVATE_KEY=$(echo "$DECODED_CONTENT" | sed -n '/^private_key=/,/-----END RSA PRIVATE KEY-----/p' | sed 's/^private_key=//')
-
-          # Mask each sensitive value
-          TENANCY_ID_MASKED=$(echo "$TENANCY_ID" | tr '\n' '|' | sed 's/|/\\n/g')
-          echo "::add-mask::$TENANCY_ID_MASKED"
-          USER_ID_MASKED=$(echo "$USER_ID" | tr '\n' '|' | sed 's/|/\\n/g')
-          echo "::add-mask::$USER_ID_MASKED"
-          FINGERPRINT_MASKED=$(echo "$FINGERPRINT" | tr '\n' '|' | sed 's/|/\\n/g')
-          echo "::add-mask::$FINGERPRINT_MASKED"
-          PRIVATE_KEY_MASKED=$(echo "$PRIVATE_KEY" | tr '\n' '|' | sed 's/|/\\n/g')
-          echo "::add-mask::$PRIVATE_KEY_MASKED"
-
-          # Write to a temporary file to avoid logging in $GITHUB_ENV
-          echo "TENANCY_ID=$TENANCY_ID" >> secrets.env
-          echo "USER_ID=$USER_ID" >> secrets.env
-          echo "FINGERPRINT=$FINGERPRINT" >> secrets.env
-          echo "REGION=$REGION" >> secrets.env
-          echo "PRIVATE_KEY<<EOF" >> secrets.env
-          echo "$PRIVATE_KEY" >> secrets.env
-          echo "EOF" >> secrets.env
-          echo "CREDENTIAL_ID=oci-vault-credential-$(date +%s)" >> secrets.env
-
-          # Source the file into $GITHUB_ENV without logging
-          cat "secrets.env" >> $GITHUB_ENV
-          echo "Secret decoded and parsed successfully"
