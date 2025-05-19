@@ -2,30 +2,50 @@ name: Create TFC Project and Workspaces
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - feature/create-tfc-project-and-workspace
+    inputs:
+      project_name:
+        description: 'Enter the Project Name'
+        required: true
+        type: string
+      workspaces:
+        description: 'Enter comma-separated workspace names (e.g., dev,qa,prod)'
+        required: true
+        type: string
 
 jobs:
   create-resources:
     runs-on: arc-runner-set
 
     steps:
-      - name: Checkout Code
+      - name: Checkout Repo
         uses: actions/checkout@v4
 
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: Create Terraform Cloud Project
+      - name: Create Project and Workspaces
         env:
           TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
           TFC_ORG: ${{ secrets.TFC_ORG }}
-          PROJECT_NAME: sample-project-api
+          PROJECT_NAME: ${{ inputs.project_name }}
+          WORKSPACES: ${{ inputs.workspaces }}
         run: |
+          echo "🔍 Checking if project '$PROJECT_NAME' already exists..."
+
+          existing_project_id=$(curl -s --request GET \
+            --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/projects" \
+            --header "Authorization: Bearer $TFC_TOKEN" \
+            --header "Content-Type: application/vnd.api+json" | jq -r \
+            --arg pname "$PROJECT_NAME" '.data[] | select(.attributes.name == $pname) | .id')
+
+          if [[ -n "$existing_project_id" ]]; then
+            echo "⚠️ Project '$PROJECT_NAME' already exists with ID: $existing_project_id"
+            exit 0
+          fi
+
           echo "🚀 Creating Terraform Cloud Project: $PROJECT_NAME"
 
-          response=$(curl -s --request POST \
+          project_response=$(curl -s --request POST \
             --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/projects" \
             --header "Authorization: Bearer $TFC_TOKEN" \
             --header "Content-Type: application/vnd.api+json" \
@@ -38,13 +58,50 @@ jobs:
               }
             }")
 
-          echo "$response" | jq .
+          echo "$project_response" | jq .
 
-          project_id=$(echo "$response" | jq -r '.data.id')
+          project_id=$(echo "$project_response" | jq -r '.data.id')
 
           if [[ "$project_id" == "null" ]]; then
-            echo "❌ Failed to create project."
+            echo "❌ Project creation failed."
             exit 1
-          else
-            echo "✅ Project created with ID: $project_id"
           fi
+
+          echo "✅ Project created with ID: $project_id"
+
+          IFS=',' read -ra workspace_names <<< "$WORKSPACES"
+
+          for workspace in "${workspace_names[@]}"; do
+            echo "🔧 Creating workspace: $workspace"
+
+            workspace_response=$(curl -s --request POST \
+              --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/workspaces" \
+              --header "Authorization: Bearer $TFC_TOKEN" \
+              --header "Content-Type: application/vnd.api+json" \
+              --data "{
+                \"data\": {
+                  \"type\": \"workspaces\",
+                  \"attributes\": {
+                    \"name\": \"$workspace\"
+                  },
+                  \"relationships\": {
+                    \"project\": {
+                      \"data\": {
+                        \"id\": \"$project_id\",
+                        \"type\": \"projects\"
+                      }
+                    }
+                  }
+                }
+              }")
+
+            echo "$workspace_response" | jq .
+
+            workspace_id=$(echo "$workspace_response" | jq -r '.data.id')
+
+            if [[ "$workspace_id" == "null" ]]; then
+              echo "❌ Workspace $workspace creation failed."
+            else
+              echo "✅ Workspace $workspace created with ID: $workspace_id"
+            fi
+          done
