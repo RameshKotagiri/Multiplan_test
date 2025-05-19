@@ -1,11 +1,14 @@
 name: Create TFC Project and Workspaces
 
 on:
-  workflow_dispatch:  # Manual trigger
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/create-tfc-project-and-workspace
 
 jobs:
   create-resources:
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-set
 
     steps:
       - name: Checkout Repo
