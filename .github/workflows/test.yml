@@ -1,13 +1,19 @@
-name: Create TFC Project and Workspaces
+name: Delete TFC Project and Workspaces
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - feature/create-tfc-project-and-workspace
+    inputs:
+      project_name:
+        description: 'Enter the Project Name to delete'
+        required: true
+        type: string
+      confirm_delete:
+        description: 'Type YES to confirm deletion'
+        required: true
+        type: string
 
 jobs:
-  create-resources:
+  delete-resources:
     runs-on: arc-runner-set
 
     steps:
@@ -17,72 +23,52 @@ jobs:
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: Create Project and Workspaces
+      - name: Delete Project and Workspaces
         env:
           TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
           TFC_ORG: ${{ secrets.TFC_ORG }}
-          PROJECT_NAME: sample-project-api
-          WORKSPACES: 'dev,qa,prod'  # Comma-separated workspace names
+          PROJECT_NAME: ${{ inputs.project_name }}
+          CONFIRM_DELETE: ${{ inputs.confirm_delete }}
         run: |
-          echo "🔧 Creating Project: $PROJECT_NAME"
-
-          project_response=$(curl -s --request POST \
-            --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/projects" \
-            --header "Authorization: Bearer $TFC_TOKEN" \
-            --header "Content-Type: application/vnd.api+json" \
-            --data "{
-              \"data\": {
-                \"type\": \"projects\",
-                \"attributes\": {
-                  \"name\": \"$PROJECT_NAME\"
-                }
-              }
-            }")
-
-          echo "$project_response" | jq .
-
-          project_id=$(echo "$project_response" | jq -r '.data.id')
-
-          if [[ "$project_id" == "null" ]]; then
-            echo "❌ Project creation failed."
+          if [[ "$CONFIRM_DELETE" != "YES" ]]; then
+            echo "Deletion not confirmed. Type YES to confirm."
             exit 1
           fi
 
-          echo "✅ Project created with ID: $project_id"
+          echo "Fetching project ID for '$PROJECT_NAME'..."
+          project_id=$(curl -s --request GET \
+            --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/projects" \
+            --header "Authorization: Bearer $TFC_TOKEN" \
+            --header "Content-Type: application/vnd.api+json" | jq -r \
+            --arg pname "$PROJECT_NAME" '.data[] | select(.attributes.name == $pname) | .id')
 
-          IFS=',' read -ra workspace_names <<< "$WORKSPACES"
+          if [[ -z "$project_id" ]]; then
+            echo "Project '$PROJECT_NAME' not found."
+            exit 1
+          fi
 
-          for workspace in "${workspace_names[@]}"; do
-            echo "🔧 Creating workspace: $workspace"
+          echo "Found project: $project_id"
+          echo "Fetching workspaces in project..."
 
-            workspace_response=$(curl -s --request POST \
-              --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/workspaces" \
+          workspaces=$(curl -s --request GET \
+            --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/workspaces" \
+            --header "Authorization: Bearer $TFC_TOKEN" \
+            --header "Content-Type: application/vnd.api+json" | jq -r \
+            --arg pid "$project_id" '.data[] | select(.relationships.project.data.id == $pid) | .id')
+
+          for ws_id in $workspaces; do
+            echo "Deleting workspace: $ws_id"
+            curl -s --request DELETE \
+              --url "https://app.terraform.io/api/v2/workspaces/$ws_id" \
               --header "Authorization: Bearer $TFC_TOKEN" \
-              --header "Content-Type: application/vnd.api+json" \
-              --data "{
-                \"data\": {
-                  \"type\": \"workspaces\",
-                  \"attributes\": {
-                    \"name\": \"$workspace\"
-                  },
-                  \"relationships\": {
-                    \"project\": {
-                      \"data\": {
-                        \"id\": \"$project_id\",
-                        \"type\": \"projects\"
-                      }
-                    }
-                  }
-                }
-              }")
-
-            echo "$workspace_response" | jq .
-
-            workspace_id=$(echo "$workspace_response" | jq -r '.data.id')
-
-            if [[ "$workspace_id" == "null" ]]; then
-              echo "❌ Workspace $workspace creation failed."
-            else
-              echo "✅ Workspace $workspace created with ID: $workspace_id"
-            fi
+              --header "Content-Type: application/vnd.api+json"
+            echo "Deleted workspace $ws_id"
           done
+
+          echo "All workspaces deleted. Deleting project..."
+          curl -s --request DELETE \
+            --url "https://app.terraform.io/api/v2/projects/$project_id" \
+            --header "Authorization: Bearer $TFC_TOKEN" \
+            --header "Content-Type: application/vnd.api+json"
+
+          echo "Project '$PROJECT_NAME' deleted successfully."
