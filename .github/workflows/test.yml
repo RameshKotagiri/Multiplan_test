@@ -1,19 +1,159 @@
- OPA Policy to Deny Manual DB_PASSWORD Variable Definition
+name: Create TFC Project, Workspaces, and Assign Team Access
 
- package terraform.security
+on:
+  workflow_dispatch:
+    inputs:
+      system:
+        description: 'System (e.g., clm, rbp)'
+        required: true
+        type: string
+      app:
+        description: 'Application/Enterprise code (e.g., nwp, rtk)'
+        required: true
+        type: string
+      envs:
+        description: 'Comma-separated environments (e.g., dev,qa,prd)'
+        required: true
+        type: string
+      iteration:
+        description: 'Iteration number (e.g., 001)'
+        required: true
+        type: string
+      team_name:
+        description: 'Team name to create and assign'
+        required: true
+        type: string
 
-deny[msg] {
-  input.resource_type == "variable"
-  input.name == "DB_PASSWORD"
-  msg := "Manual setting of DB_PASSWORD is not allowed. Use GitHub Actions only."
-}
+jobs:
+  create-resources:
+    runs-on: arc-runner-set
 
-OPA Policy to Deny Terraform Creating Vault Secrets
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
 
-package terraform.security
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
 
-deny[msg] {
-  input.resource_type == "oci_vault_secret"
-  input.action == "create"
-  msg := "Creating Vault secrets from Terraform is not allowed."
-}
+      - name: Create Project, Workspaces, and Assign Team Access
+        env:
+          TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+          TFC_ORG: ${{ secrets.TFC_ORG }}
+          SYSTEM: ${{ inputs.system }}
+          APP: ${{ inputs.app }}
+          ENVS: ${{ inputs.envs }}
+          ITERATION: ${{ inputs.iteration }}
+          TEAM_NAME: ${{ inputs.team_name }}
+        run: |
+          PROJECT_NAME="oci-${SYSTEM}-${APP}"
+          echo "📁 Using Project Name: $PROJECT_NAME"
+
+          echo "🔍 Checking if project already exists..."
+          existing_project_id=$(curl -s --request GET \
+            --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/projects" \
+            --header "Authorization: Bearer $TFC_TOKEN" \
+            --header "Content-Type: application/vnd.api+json" | jq -r \
+            --arg pname "$PROJECT_NAME" '.data[] | select(.attributes.name == $pname) | .id')
+
+          if [[ -n "$existing_project_id" ]]; then
+            echo "❌ Project '$PROJECT_NAME' already exists. Failing workflow."
+            exit 1
+          fi
+
+          echo "🚀 Creating project: $PROJECT_NAME"
+          project_response=$(curl -s --request POST \
+            --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/projects" \
+            --header "Authorization: Bearer $TFC_TOKEN" \
+            --header "Content-Type: application/vnd.api+json" \
+            --data "{
+              \"data\": {
+                \"type\": \"projects\",
+                \"attributes\": {
+                  \"name\": \"$PROJECT_NAME\"
+                }
+              }
+            }")
+
+          project_id=$(echo "$project_response" | jq -r '.data.id')
+          echo "✅ Project created with ID: $project_id"
+
+          IFS=',' read -ra ENV_LIST <<< "$ENVS"
+          declare -a WORKSPACE_IDS=()
+
+          for ENV in "${ENV_LIST[@]}"; do
+            WORKSPACE_NAME="oci-${SYSTEM}-${APP}-${ENV}-${ITERATION}"
+            echo "🔧 Creating workspace: $WORKSPACE_NAME"
+
+            workspace_response=$(curl -s --request POST \
+              --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/workspaces" \
+              --header "Authorization: Bearer $TFC_TOKEN" \
+              --header "Content-Type: application/vnd.api+json" \
+              --data "{
+                \"data\": {
+                  \"type\": \"workspaces\",
+                  \"attributes\": {
+                    \"name\": \"$WORKSPACE_NAME\"
+                  },
+                  \"relationships\": {
+                    \"project\": {
+                      \"data\": {
+                        \"id\": \"$project_id\",
+                        \"type\": \"projects\"
+                      }
+                    }
+                  }
+                }
+              }")
+
+            ws_id=$(echo "$workspace_response" | jq -r '.data.id')
+            echo "✅ Workspace created: $WORKSPACE_NAME (ID: $ws_id)"
+            WORKSPACE_IDS+=("$ws_id")
+          done
+
+          echo "👥 Creating team: $TEAM_NAME"
+          team_response=$(curl -s --request POST \
+            --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/teams" \
+            --header "Authorization: Bearer $TFC_TOKEN" \
+            --header "Content-Type: application/vnd.api+json" \
+            --data "{
+              \"data\": {
+                \"type\": \"teams\",
+                \"attributes\": {
+                  \"name\": \"$TEAM_NAME\"
+                }
+              }
+            }")
+
+          team_id=$(echo "$team_response" | jq -r '.data.id')
+
+          if [[ "$team_id" == "null" || -z "$team_id" ]]; then
+            echo "❌ Team creation failed."
+            exit 1
+          fi
+
+          echo "✅ Team created with ID: $team_id"
+
+          for ws_id in "${WORKSPACE_IDS[@]}"; do
+            echo "🔗 Assigning team write access to workspace ID: $ws_id"
+            curl -s --request POST \
+              --url "https://app.terraform.io/api/v2/workspaces/$ws_id/relationships/teams" \
+              --header "Authorization: Bearer $TFC_TOKEN" \
+              --header "Content-Type: application/vnd.api+json" \
+              --data "{
+                \"data\": {
+                  \"type\": \"team-workspace-access\",
+                  \"attributes\": {
+                    \"access\": \"write\"
+                  },
+                  \"relationships\": {
+                    \"team\": {
+                      \"data\": {
+                        \"id\": \"$team_id\",
+                        \"type\": \"teams\"
+                      }
+                    }
+                  }
+                }
+              }"
+            echo "✅ Write access granted to workspace $ws_id"
+          done
