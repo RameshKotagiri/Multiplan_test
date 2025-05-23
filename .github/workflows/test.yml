@@ -1,56 +1,46 @@
-name: Delete TFC Team by Name
-
-on:
-  workflow_dispatch:
-    inputs:
-      team_name:
-        description: 'Name of the team to delete'
-        required: true
-        type: string
-
-jobs:
-  delete-team:
-    runs-on: arc-runner-set
-
-    steps:
-      - name: Delete team by name
-        env:
-          TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
-          TFC_ORG: ${{ secrets.TFC_ORG }}
-          TEAM_NAME: ${{ inputs.team_name }}
-        run: |
-          echo "Sanitizing input..."
-          # Clean the team name (remove leading/trailing whitespace)
-          TEAM_NAME=$(echo "$TEAM_NAME" | xargs)
-
-          echo "Looking up team ID for '$TEAM_NAME'..."
-
-          response=$(curl -s --request GET \
-            --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/teams" \
-            --header "Authorization: Bearer $TFC_TOKEN" \
-            --header "Content-Type: application/vnd.api+json")
-
-          echo "Response from team list (truncated):"
-          echo "$response" | jq '.data | length'
-
-          echo "All team names returned by API:"
-          echo "$response" | jq -r '.data[] | .attributes.name'
-
-          echo "Team names with IDs:"
-          echo "$response" | jq -r '.data[] | "\(.attributes.name) => \(.id)"'
-
-          team_id=$(echo "$response" | jq -r --arg tname "$TEAM_NAME" '.data[] | select(.attributes.name == $tname) | .id')
-
-          if [[ -z "$team_id" || "$team_id" == "null" ]]; then
-            echo "Team '$TEAM_NAME' not found."
-            exit 1
-          fi
-
-          echo "Deleting team with ID: $team_id"
-
-          curl -s --request DELETE \
-            --url "https://app.terraform.io/api/v2/teams/$team_id" \
-            --header "Authorization: Bearer $TFC_TOKEN" \
-            --header "Content-Type: application/vnd.api+json"
-
-          echo "Team '$TEAM_NAME' deleted successfully."
+Response from team list (truncated):
+20
+All team names returned by API:
+architecture
+container
+core-cloud
+corporate-systems
+database
+datacom
+data-protection
+dbin-benigtr-dev
+dbin-benigtr-sre
+dcdp-col-dev
+dcdp-col-sre
+devops
+digital-transformation-office
+dnex-cia-dev
+dnex-cia-sre
+observability
+owners
+ppop-autobr-dev
+ppop-autobr-sre
+pprp-prpptl-dev
+Team names with IDs:
+architecture => team-eL4PFY9GVE1MJL2g
+container => team-kApSD3Wuy1ExdNv8
+core-cloud => team-N8weLwSP2vAsnWtF
+corporate-systems => team-KK4VwTzabeQsCacf
+database => team-28R6N2QdEy5jo6Fz
+datacom => team-gvm2DwurTkcbJNco
+data-protection => team-Q2UVMoaZrMXLrTVj
+dbin-benigtr-dev => team-9YvikQzHgkPrXDj8
+dbin-benigtr-sre => team-HGzdSDVce5abWEV8
+dcdp-col-dev => team-U9DQouu6znxYfx3p
+dcdp-col-sre => team-J5Wd4nqz35f66JV1
+devops => team-8NobY9GJwZub6iWx
+digital-transformation-office => team-3NsbeW86SK2ds8dN
+dnex-cia-dev => team-5667H6fUUmRr3KaR
+dnex-cia-sre => team-V6zrK38SVwoH2HAi
+observability => team-mv998m9YCg9WAfS5
+owners => team-wY5TbphTs83AKxfC
+ppop-autobr-dev => team-bfCJiYvAuNPLAVwt
+ppop-autobr-sre => team-L2vrXJC6DBUecEFw
+pprp-prpptl-dev => team-AmV67gpJaDJRFbAK
+Team 'team-demo-test-5' not found.
+Error: Process completed with exit code 1.
