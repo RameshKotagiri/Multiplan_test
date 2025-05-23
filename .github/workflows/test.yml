@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       team_name:
-        description: 'Terraform Cloud Team Name'
+        description: 'Enter the Team Name to delete'
         required: true
         type: string
 
@@ -18,29 +18,28 @@ jobs:
           TFC_ORG: ${{ secrets.TFC_ORG }}
           TEAM_NAME: ${{ inputs.team_name }}
         run: |
-          echo "🔍 Looking up team ID for '$TEAM_NAME'..."
+          echo "Looking up team ID for '$TEAM_NAME'..."
+          response=$(curl -s -H "Authorization: Bearer $TFC_TOKEN" \
+            -H "Content-Type: application/vnd.api+json" \
+            "https://app.terraform.io/api/v2/organizations/$TFC_ORG/teams")
 
-          team_id=$(curl -s --request GET \
-            --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/teams" \
-            --header "Authorization: Bearer $TFC_TOKEN" \
-            --header "Content-Type: application/vnd.api+json" | \
-            jq -r --arg tname "$TEAM_NAME" '.data[] | select(.attributes.name == $tname) | .id')
+          team_id=$(echo "$response" | jq -r --arg tname "$TEAM_NAME" '.data[] | select(.attributes.name == $tname) | .id')
 
           if [[ -z "$team_id" ]]; then
             echo "❌ Team '$TEAM_NAME' not found."
+            echo "Response: $response"
             exit 1
           fi
 
           echo "🗑️ Deleting team with ID: $team_id"
-          response=$(curl -s -o /dev/null -w "%{http_code}" \
-            --request DELETE \
+          delete_response=$(curl -s -o /dev/null -w "%{http_code}" --request DELETE \
             --url "https://app.terraform.io/api/v2/teams/$team_id" \
             --header "Authorization: Bearer $TFC_TOKEN" \
             --header "Content-Type: application/vnd.api+json")
 
-          if [[ "$response" -eq 204 ]]; then
-            echo "✅ Successfully deleted team '$TEAM_NAME' (ID: $team_id)"
+          if [[ "$delete_response" == "204" ]]; then
+            echo "✅ Team '$TEAM_NAME' deleted successfully."
           else
-            echo "❌ Failed to delete team '$TEAM_NAME'. HTTP status: $response"
+            echo "❌ Failed to delete team. HTTP Status: $delete_response"
             exit 1
           fi
