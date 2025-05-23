@@ -1,77 +1,39 @@
-name: Delete Terraform Cloud Team by Name
-
-on:
-  workflow_dispatch:
-    inputs:
-      TEAM_NAME:
-        description: 'Name of the team to delete'
-        required: true
-        type: string
-
-jobs:
-  delete-team:
-    runs-on: arc-runner-set
-
-    steps:
-      - name: Install jq
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq
-
-      - name: Delete team by name
-        env:
-          TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
-          TFC_ORG: ${{ secrets.TFC_ORG }}
-          TEAM_NAME: ${{ github.event.inputs.TEAM_NAME }}
-        run: |
-          echo "Sanitizing input..."
-          TEAM_NAME=$(echo "$TEAM_NAME" | xargs)
-
-          echo "Looking up team ID for '$TEAM_NAME'..."
-
-          all_teams=()
-          url="https://app.terraform.io/api/v2/organizations/$TFC_ORG/teams"
-
-          while [ -n "$url" ]; do
-            response=$(curl -s --header "Authorization: Bearer $TFC_TOKEN" \
-                             --header "Content-Type: application/vnd.api+json" \
-                             "$url")
-
-            # Extract and append team data
-            teams_on_page=$(echo "$response" | jq -c '.data[]')
-            while IFS= read -r team; do
-              all_teams+=("$team")
-            done < <(echo "$teams_on_page")
-
-            # Get next page URL if exists
-            url=$(echo "$response" | jq -r '.links.next // empty')
-          done
-
-          echo "All team names returned by API:"
-          for team_json in "${all_teams[@]}"; do
-            name=$(echo "$team_json" | jq -r '.attributes.name')
-            echo "$name"
-          done
-
-          # Extract matching team ID
-          team_id=""
-          for team_json in "${all_teams[@]}"; do
-            name=$(echo "$team_json" | jq -r '.attributes.name')
-            if [[ "$name" == "$TEAM_NAME" ]]; then
-              team_id=$(echo "$team_json" | jq -r '.id')
-              break
-            fi
-          done
-
-          if [[ -z "$team_id" ]]; then
-            echo "Team '$TEAM_NAME' not found across all pages."
-            exit 1
-          fi
-
-          echo "Deleting team with ID: $team_id"
-          curl -s -X DELETE \
-            --url "https://app.terraform.io/api/v2/teams/$team_id" \
-            --header "Authorization: Bearer $TFC_TOKEN" \
-            --header "Content-Type: application/vnd.api+json"
-
-          echo "Team '$TEAM_NAME' deleted successfully."
+6s
+Run echo "Sanitizing input..."
+  
+Sanitizing input...
+Looking up team ID for 'team-demo-test-5'...
+All team names returned by API:
+architecture
+container
+core-cloud
+corporate-systems
+database
+datacom
+data-protection
+dbin-benigtr-dev
+dbin-benigtr-sre
+dcdp-col-dev
+dcdp-col-sre
+devops
+digital-transformation-office
+dnex-cia-dev
+dnex-cia-sre
+observability
+owners
+ppop-autobr-dev
+ppop-autobr-sre
+pprp-prpptl-dev
+pprp-prpptl-sre
+pse
+security
+sso
+storage
+team-demo-test
+team-demo-test-1
+team-demo-test-2
+team-demo-test-5
+telecom
+unix
+Deleting team with ID: team-GhfxTXDAJdDYfCXd
+Team 'team-demo-test-5' deleted successfully.
