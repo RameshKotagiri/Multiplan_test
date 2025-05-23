@@ -1,49 +1,65 @@
-Run echo "Sanitizing input..."
-Sanitizing input...
-Looking up team ID for 'team-demo-test-5'...
-Response from team list (truncated):
-20
-All team names returned by API:
-architecture
-container
-core-cloud
-corporate-systems
-database
-datacom
-data-protection
-dbin-benigtr-dev
-dbin-benigtr-sre
-dcdp-col-dev
-dcdp-col-sre
-devops
-digital-transformation-office
-dnex-cia-dev
-dnex-cia-sre
-observability
-owners
-ppop-autobr-dev
-ppop-autobr-sre
-pprp-prpptl-dev
-Team names with IDs:
-architecture => team-eL4PFY9GVE1MJL2g
-container => team-kApSD3Wuy1ExdNv8
-core-cloud => team-N8weLwSP2vAsnWtF
-corporate-systems => team-KK4VwTzabeQsCacf
-database => team-28R6N2QdEy5jo6Fz
-datacom => team-gvm2DwurTkcbJNco
-data-protection => team-Q2UVMoaZrMXLrTVj
-dbin-benigtr-dev => team-9YvikQzHgkPrXDj8
-dbin-benigtr-sre => team-HGzdSDVce5abWEV8
-dcdp-col-dev => team-U9DQouu6znxYfx3p
-dcdp-col-sre => team-J5Wd4nqz35f66JV1
-devops => team-8NobY9GJwZub6iWx
-digital-transformation-office => team-3NsbeW86SK2ds8dN
-dnex-cia-dev => team-5667H6fUUmRr3KaR
-dnex-cia-sre => team-V6zrK38SVwoH2HAi
-observability => team-mv998m9YCg9WAfS5
-owners => team-wY5TbphTs83AKxfC
-ppop-autobr-dev => team-bfCJiYvAuNPLAVwt
-ppop-autobr-sre => team-L2vrXJC6DBUecEFw
-pprp-prpptl-dev => team-AmV67gpJaDJRFbAK
-Team 'team-demo-test-5' not found.
-Error: Process completed with exit code 1.
+name: delete-team
+
+on:
+  workflow_dispatch:
+    inputs:
+      TEAM_NAME:
+        description: 'Team name to delete'
+        required: true
+
+jobs:
+  delete:
+    runs-on: arc-runner-set
+    steps:
+      - name: Set up jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Delete team by name
+        env:
+          TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+          TFC_ORG: ${{ secrets.TFC_ORG }}
+          TEAM_NAME: ${{ github.event.inputs.TEAM_NAME }}
+        run: |
+          echo "Sanitizing input..."
+          TEAM_NAME=$(echo "$TEAM_NAME" | xargs)
+
+          echo "Looking up team ID for '$TEAM_NAME'..."
+          TEAM_ID=""
+          PAGE_NUMBER=1
+
+          while true; do
+            response=$(curl -s --request GET \
+              --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/teams?page[number]=$PAGE_NUMBER" \
+              --header "Authorization: Bearer $TFC_TOKEN" \
+              --header "Content-Type: application/vnd.api+json")
+
+            echo "Page $PAGE_NUMBER - Team names:"
+            echo "$response" | jq -r '.data[].attributes.name'
+
+            TEAM_ID=$(echo "$response" | jq -r --arg tname "$TEAM_NAME" '.data[] | select(.attributes.name == $tname) | .id')
+
+            if [[ -n "$TEAM_ID" && "$TEAM_ID" != "null" ]]; then
+              echo "Found team ID: $TEAM_ID"
+              break
+            fi
+
+            HAS_NEXT=$(echo "$response" | jq -r '"\(.meta.pagination.next-page)"')
+            if [[ -z "$HAS_NEXT" || "$HAS_NEXT" == "null" ]]; then
+              echo "Team '$TEAM_NAME' not found in any page."
+              exit 1
+            fi
+            PAGE_NUMBER=$HAS_NEXT
+          done
+
+          echo "Deleting team ID: $TEAM_ID..."
+          delete_response=$(curl -s -o /dev/null -w "%{http_code}" --request DELETE \
+            --url "https://app.terraform.io/api/v2/teams/$TEAM_ID" \
+            --header "Authorization: Bearer $TFC_TOKEN" \
+            --header "Content-Type: application/vnd.api+json")
+
+          if [[ "$delete_response" == "204" ]]; then
+            echo "Team '$TEAM_NAME' successfully deleted."
+          else
+            echo "Failed to delete team '$TEAM_NAME'. HTTP status: $delete_response"
+            exit 1
+          fi
