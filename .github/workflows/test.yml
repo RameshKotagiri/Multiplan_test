@@ -1,4 +1,4 @@
-name: Delete TFC Project and Workspaces
+name: Delete TFC Project, Workspaces, and Team
 
 on:
   workflow_dispatch:
@@ -6,6 +6,10 @@ on:
       project_name:
         description: 'Enter the Project Name to delete'
         required: true
+        type: string
+      team_name:
+        description: 'Enter the Team Name to delete (optional)'
+        required: false
         type: string
       confirm_delete:
         description: 'Type YES to confirm deletion'
@@ -23,11 +27,12 @@ jobs:
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: Delete Project and Workspaces
+      - name: Delete Project, Workspaces, and Team
         env:
           TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
           TFC_ORG: ${{ secrets.TFC_ORG }}
           PROJECT_NAME: ${{ inputs.project_name }}
+          TEAM_NAME: ${{ inputs.team_name }}
           CONFIRM_DELETE: ${{ inputs.confirm_delete }}
         run: |
           if [[ "$CONFIRM_DELETE" != "YES" ]]; then
@@ -72,3 +77,37 @@ jobs:
             --header "Content-Type: application/vnd.api+json"
 
           echo "Project '$PROJECT_NAME' deleted successfully."
+
+          if [[ -n "$TEAM_NAME" ]]; then
+            echo "Looking up team ID for '$TEAM_NAME'..."
+
+            next_url="https://app.terraform.io/api/v2/organizations/$TFC_ORG/teams"
+            while [[ -n "$next_url" ]]; do
+              response=$(curl -s --request GET \
+                --url "$next_url" \
+                --header "Authorization: Bearer $TFC_TOKEN" \
+                --header "Content-Type: application/vnd.api+json")
+
+              team_id=$(echo "$response" | jq -r --arg name "$TEAM_NAME" \
+                '.data[] | select(.attributes.name == $name) | .id')
+
+              if [[ -n "$team_id" && "$team_id" != "null" ]]; then
+                echo "Deleting team with ID: $team_id"
+                curl -s --request DELETE \
+                  --url "https://app.terraform.io/api/v2/teams/$team_id" \
+                  --header "Authorization: Bearer $TFC_TOKEN" \
+                  --header "Content-Type: application/vnd.api+json"
+                echo "Team '$TEAM_NAME' deleted successfully."
+                break
+              fi
+
+              next_url=$(echo "$response" | jq -r '.links.next // empty')
+            done
+
+            if [[ -z "$team_id" || "$team_id" == "null" ]]; then
+              echo "Team '$TEAM_NAME' not found."
+              exit 1
+            fi
+          else
+            echo "No team name provided. Skipping team deletion."
+          fi
