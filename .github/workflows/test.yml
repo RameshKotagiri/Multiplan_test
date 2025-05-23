@@ -1,18 +1,22 @@
-name: delete-team
+name: Delete Terraform Cloud Team by Name
 
 on:
   workflow_dispatch:
     inputs:
       TEAM_NAME:
-        description: 'Team name to delete'
+        description: 'Name of the team to delete'
         required: true
+        type: string
 
 jobs:
-  delete:
+  delete-team:
     runs-on: arc-runner-set
+
     steps:
-      - name: Set up jq
-        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Install jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
 
       - name: Delete team by name
         env:
@@ -24,42 +28,50 @@ jobs:
           TEAM_NAME=$(echo "$TEAM_NAME" | xargs)
 
           echo "Looking up team ID for '$TEAM_NAME'..."
-          TEAM_ID=""
-          PAGE_NUMBER=1
 
-          while true; do
-            response=$(curl -s --request GET \
-              --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/teams?page[number]=$PAGE_NUMBER" \
-              --header "Authorization: Bearer $TFC_TOKEN" \
-              --header "Content-Type: application/vnd.api+json")
+          all_teams=()
+          url="https://app.terraform.io/api/v2/organizations/$TFC_ORG/teams"
 
-            echo "Page $PAGE_NUMBER - Team names:"
-            echo "$response" | jq -r '.data[].attributes.name'
+          while [ -n "$url" ]; do
+            response=$(curl -s --header "Authorization: Bearer $TFC_TOKEN" \
+                             --header "Content-Type: application/vnd.api+json" \
+                             "$url")
 
-            TEAM_ID=$(echo "$response" | jq -r --arg tname "$TEAM_NAME" '.data[] | select(.attributes.name == $tname) | .id')
+            # Extract and append team data
+            teams_on_page=$(echo "$response" | jq -c '.data[]')
+            while IFS= read -r team; do
+              all_teams+=("$team")
+            done < <(echo "$teams_on_page")
 
-            if [[ -n "$TEAM_ID" && "$TEAM_ID" != "null" ]]; then
-              echo "Found team ID: $TEAM_ID"
-              break
-            fi
-
-            HAS_NEXT=$(echo "$response" | jq -r '"\(.meta.pagination.next-page)"')
-            if [[ -z "$HAS_NEXT" || "$HAS_NEXT" == "null" ]]; then
-              echo "Team '$TEAM_NAME' not found in any page."
-              exit 1
-            fi
-            PAGE_NUMBER=$HAS_NEXT
+            # Get next page URL if exists
+            url=$(echo "$response" | jq -r '.links.next // empty')
           done
 
-          echo "Deleting team ID: $TEAM_ID..."
-          delete_response=$(curl -s -o /dev/null -w "%{http_code}" --request DELETE \
-            --url "https://app.terraform.io/api/v2/teams/$TEAM_ID" \
-            --header "Authorization: Bearer $TFC_TOKEN" \
-            --header "Content-Type: application/vnd.api+json")
+          echo "All team names returned by API:"
+          for team_json in "${all_teams[@]}"; do
+            name=$(echo "$team_json" | jq -r '.attributes.name')
+            echo "$name"
+          done
 
-          if [[ "$delete_response" == "204" ]]; then
-            echo "Team '$TEAM_NAME' successfully deleted."
-          else
-            echo "Failed to delete team '$TEAM_NAME'. HTTP status: $delete_response"
+          # Extract matching team ID
+          team_id=""
+          for team_json in "${all_teams[@]}"; do
+            name=$(echo "$team_json" | jq -r '.attributes.name')
+            if [[ "$name" == "$TEAM_NAME" ]]; then
+              team_id=$(echo "$team_json" | jq -r '.id')
+              break
+            fi
+          done
+
+          if [[ -z "$team_id" ]]; then
+            echo "Team '$TEAM_NAME' not found across all pages."
             exit 1
           fi
+
+          echo "Deleting team with ID: $team_id"
+          curl -s -X DELETE \
+            --url "https://app.terraform.io/api/v2/teams/$team_id" \
+            --header "Authorization: Bearer $TFC_TOKEN" \
+            --header "Content-Type: application/vnd.api+json"
+
+          echo "Team '$TEAM_NAME' deleted successfully."
