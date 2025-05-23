@@ -1,24 +1,32 @@
-for ws_id in "${WORKSPACE_IDS[@]}"; do
-  echo "🔗 Assigning team $TEAM_NAME to workspace ID: $ws_id"
-  assign_response=$(curl -s -w "\n%{http_code}" --request POST \
-    --url "https://app.terraform.io/api/v2/workspaces/$ws_id/relationships/teams" \
-    --header "Authorization: Bearer $TFC_TOKEN" \
-    --header "Content-Type: application/vnd.api+json" \
-    --data "{
-      \"data\": [
-        {
-          \"id\": \"$team_id\",
-          \"type\": \"teams\"
-        }
-      ]
-    }")
+name: Delete TFC Team
 
-  assign_status=$(echo "$assign_response" | tail -n1)
-  if [[ "$assign_status" == "200" || "$assign_status" == "201" ]]; then
-    echo "Team assigned to workspace $ws_id"
-  else
-    echo "Failed to assign team to workspace $ws_id"
-    echo "$assign_response"
-    exit 1
-  fi
-done
+on:
+  workflow_dispatch:
+    inputs:
+      team_id:
+        description: 'Terraform Cloud Team ID (e.g. team-abc123)'
+        required: true
+        type: string
+
+jobs:
+  delete-team:
+    runs-on: arc-runner-set
+    steps:
+      - name: Delete TFC Team
+        env:
+          TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+          TEAM_ID: ${{ inputs.team_id }}
+        run: |
+          echo "🗑️ Deleting team with ID: $TEAM_ID"
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+            --request DELETE \
+            --url "https://app.terraform.io/api/v2/teams/$TEAM_ID" \
+            --header "Authorization: Bearer $TFC_TOKEN" \
+            --header "Content-Type: application/vnd.api+json")
+
+          if [[ "$response" -eq 204 ]]; then
+            echo "✅ Successfully deleted team $TEAM_ID"
+          else
+            echo "❌ Failed to delete team $TEAM_ID. HTTP status: $response"
+            exit 1
+          fi
