@@ -1,10 +1,10 @@
-name: Delete TFC Team
+name: Delete TFC Team by Name
 
 on:
   workflow_dispatch:
     inputs:
-      team_id:
-        description: 'Terraform Cloud Team ID (e.g. team-abc123)'
+      team_name:
+        description: 'Terraform Cloud Team Name'
         required: true
         type: string
 
@@ -12,21 +12,35 @@ jobs:
   delete-team:
     runs-on: arc-runner-set
     steps:
-      - name: Delete TFC Team
+      - name: Delete team by name
         env:
           TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
-          TEAM_ID: ${{ inputs.team_id }}
+          TFC_ORG: ${{ secrets.TFC_ORG }}
+          TEAM_NAME: ${{ inputs.team_name }}
         run: |
-          echo "🗑️ Deleting team with ID: $TEAM_ID"
+          echo "🔍 Looking up team ID for '$TEAM_NAME'..."
+
+          team_id=$(curl -s --request GET \
+            --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/teams" \
+            --header "Authorization: Bearer $TFC_TOKEN" \
+            --header "Content-Type: application/vnd.api+json" | \
+            jq -r --arg tname "$TEAM_NAME" '.data[] | select(.attributes.name == $tname) | .id')
+
+          if [[ -z "$team_id" ]]; then
+            echo "❌ Team '$TEAM_NAME' not found."
+            exit 1
+          fi
+
+          echo "🗑️ Deleting team with ID: $team_id"
           response=$(curl -s -o /dev/null -w "%{http_code}" \
             --request DELETE \
-            --url "https://app.terraform.io/api/v2/teams/$TEAM_ID" \
+            --url "https://app.terraform.io/api/v2/teams/$team_id" \
             --header "Authorization: Bearer $TFC_TOKEN" \
             --header "Content-Type: application/vnd.api+json")
 
           if [[ "$response" -eq 204 ]]; then
-            echo "✅ Successfully deleted team $TEAM_ID"
+            echo "✅ Successfully deleted team '$TEAM_NAME' (ID: $team_id)"
           else
-            echo "❌ Failed to delete team $TEAM_ID. HTTP status: $response"
+            echo "❌ Failed to delete team '$TEAM_NAME'. HTTP status: $response"
             exit 1
           fi
