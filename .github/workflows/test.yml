@@ -1,3 +1,6 @@
+Run echo "Sanitizing input..."
+Sanitizing input...
+Looking up team ID for 'team-demo-test-5'...
 Response from team list (truncated):
 20
 All team names returned by API:
