@@ -1,81 +1,24 @@
-5s
-39s
-5s
-Run PROJECT_NAME="oci-${SYSTEM}-${APP}"
-Using Project Name: oci-test-demo
-Checking if project already exists...
-Creating project: oci-test-demo
-Project created with ID: prj-rK2d7aK4p8pXZSJm
-Creating workspace: oci-test-demo-dev-001
-Workspace created: oci-test-demo-dev-001 (ID: ws-FFe56h8MFwd1Gp9k)
-Creating workspace: oci-test-demo-qa-001
-Workspace created: oci-test-demo-qa-001 (ID: ws-DV1mFYSxUUuQSRMm)
-Creating team: team-demo-test-2
-Team creation response:
-{
-  "data": {
-    "id": "team-m1zFXTZ5d9Mcq8Sb",
-    "type": "teams",
-    "attributes": {
-      "name": "team-demo-test-2",
-      "users-count": 0,
-      "sso-team-id": null,
-      "visibility": "secret",
-      "allow-member-token-management": true,
-      "permissions": {
-        "can-update-membership": true,
-        "can-destroy": true,
-        "can-update-organization-access": true,
-        "can-update-api-token": true,
-        "can-update-visibility": true,
-        "can-update-name": true,
-        "can-update-sso-team-id": true,
-        "can-update-member-token-management": true,
-        "can-view-api-token": true
-      },
-      "organization-access": {
-        "manage-policies": false,
-        "manage-workspaces": false,
-        "manage-vcs-settings": false,
-        "manage-policy-overrides": false,
-        "manage-modules": false,
-        "manage-providers": false,
-        "manage-run-tasks": false,
-        "manage-projects": false,
-        "manage-membership": false,
-        "manage-teams": false,
-        "manage-organization-access": false,
-        "access-secret-teams": false,
-        "read-projects": false,
-        "read-workspaces": false,
-        "manage-agent-pools": false,
-        "manage-public-providers": false,
-        "manage-public-modules": false
-      }
-    },
-    "relationships": {
-      "organization": {
-        "data": {
-          "id": "***",
-          "type": "organizations"
+for ws_id in "${WORKSPACE_IDS[@]}"; do
+  echo "🔗 Assigning team $TEAM_NAME to workspace ID: $ws_id"
+  assign_response=$(curl -s -w "\n%{http_code}" --request POST \
+    --url "https://app.terraform.io/api/v2/workspaces/$ws_id/relationships/teams" \
+    --header "Authorization: Bearer $TFC_TOKEN" \
+    --header "Content-Type: application/vnd.api+json" \
+    --data "{
+      \"data\": [
+        {
+          \"id\": \"$team_id\",
+          \"type\": \"teams\"
         }
-      },
-      "users": {
-        "data": []
-      },
-      "organization-memberships": {
-        "data": []
-      },
-      "authentication-token": {
-        "meta": {}
-      },
-      "authentication-tokens": {
-        "meta": {}
-      }
-    },
-    "links": {
-      "self": "/api/v2/teams/team-m1zFXTZ5d9Mcq8Sb"
-    }
-  }
-}
-Team created with ID: team-m1zFXTZ5d9Mcq8Sb
+      ]
+    }")
+
+  assign_status=$(echo "$assign_response" | tail -n1)
+  if [[ "$assign_status" == "200" || "$assign_status" == "201" ]]; then
+    echo "Team assigned to workspace $ws_id"
+  else
+    echo "Failed to assign team to workspace $ws_id"
+    echo "$assign_response"
+    exit 1
+  fi
+done
