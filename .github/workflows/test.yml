@@ -1,37 +1,36 @@
-assign_output=$(curl -s -w "\n%{http_code}" --request POST \
-  --url "https://app.terraform.io/api/v2/team-workspaces" \
+echo "Assigning team to project with ID: $project_id"
+
+project_assign_response=$(curl -s -w "\n%{http_code}" --request POST \
+  --url "https://app.terraform.io/api/v2/team-project-access" \
   --header "Authorization: Bearer $TFC_TOKEN" \
   --header "Content-Type: application/vnd.api+json" \
   --data "{
     \"data\": {
-      \"type\": \"team-workspaces\",
+      \"type\": \"team-project-access\",
       \"attributes\": {
         \"access\": \"write\"
       },
       \"relationships\": {
-        \"workspace\": {
-          \"data\": {
-            \"id\": \"$ws_id\",
-            \"type\": \"workspaces\"
-          }
-        },
         \"team\": {
           \"data\": {
-            \"id\": \"$team_id\",
-            \"type\": \"teams\"
+            \"type\": \"teams\",
+            \"id\": \"$team_id\"
+          }
+        },
+        \"project\": {
+          \"data\": {
+            \"type\": \"projects\",
+            \"id\": \"$project_id\"
           }
         }
       }
     }
   }")
 
-# Split output and status code
-assign_status=$(echo "$assign_output" | tail -n1)
-assign_body=$(echo "$assign_output" | sed '$d')
-
-if [[ "$assign_status" == "201" ]]; then
-  echo "Team write access assigned to $ws_id"
+project_status=$(echo "$project_assign_response" | tail -n1)
+if [[ "$project_status" -eq 201 ]]; then
+  echo "Team successfully assigned to project $project_id"
 else
-  echo "Failed to assign team access to $ws_id. Status: $assign_status"
-  echo "$assign_body"
+  echo "Failed to assign team to project. Status: $project_status"
+  echo "$project_assign_response"
 fi
