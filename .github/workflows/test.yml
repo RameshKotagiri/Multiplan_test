@@ -48,6 +48,8 @@ jobs:
           PROJECT_NAME="oci-${SYSTEM}-${APP}"
           echo "Using Project Name: $PROJECT_NAME"
 
+          ### Check if project already exists ###
+      
           echo "Checking if project already exists..."
           existing_project_id=$(curl -s --request GET \
             --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/projects" \
@@ -59,6 +61,8 @@ jobs:
             echo "Project '$PROJECT_NAME' already exists. Failing workflow."
             exit 1
           fi
+
+          ### Create the Project ###
 
           echo "Creating project: $PROJECT_NAME"
           project_response=$(curl -s --request POST \
@@ -76,6 +80,8 @@ jobs:
 
           project_id=$(echo "$project_response" | jq -r '.data.id')
           echo "Project created with ID: $project_id"
+
+          ### Create workspaces and attach to project ###
 
           IFS=',' read -ra ENV_LIST <<< "$ENVS"
           declare -a WORKSPACE_IDS=()
@@ -110,6 +116,8 @@ jobs:
             WORKSPACE_IDS+=("$ws_id")
           done
 
+          ### Create Team ###
+
           echo "Creating team: $TEAM_NAME"
           team_response=$(curl -s --request POST \
             --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/teams" \
@@ -136,6 +144,8 @@ jobs:
           fi
 
           echo "Team created with ID: $team_id"
+
+          ### Assign team write access to each workspace ###
 
           for ws_id in "${WORKSPACE_IDS[@]}"; do
             echo "Assigning team write access to workspace ID: $ws_id"
@@ -167,7 +177,6 @@ jobs:
                 }
               }")
 
-            # Split output and status code
             assign_status=$(echo "$assign_output" | tail -n1)
             assign_body=$(echo "$assign_output" | sed '$d')
 
