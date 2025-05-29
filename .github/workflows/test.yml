@@ -1,189 +1,55 @@
-name: Create TFC Project, Workspaces and Assign Team Access
+Constant: (We need to hardcode it, no need to pass it as input)
+Environment -> poc
+Iteration -> 001
+ 
+Dynamic: (inputs)
 
-on:
-  workflow_dispatch:
-    inputs:
-      system:
-        description: 'System (e.g., clm, rbp, mars)'
-        required: true
-        type: string
-      app:
-        description: 'Application/Enterprise code (e.g., nwp, rtk, apig)'
-        required: true
-        type: string
-      envs:
-        description: 'Comma-separated environments (e.g., dev,qa,prd)'
-        required: true
-        type: string
-      iteration:
-        description: 'Iteration number (e.g., 001)'
-        required: true
-        type: string
-      team_name:
-        description: 'Team name to create and assign'
-        required: true
-        type: string
+System -> user input
+Application -> user input
+No of workspace -> user input
+Team name -> user input
+SSO ID -> user input
+Usage -> user input (optional) -> Usage means something to differentiate the workspaces. 
 
-jobs:
-  create-resources:
-    runs-on: arc-runner-set
+Example: 
 
-    steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v4
+Project name: oci-dbin-benigt
+Workspace name: oci-dbin-benigt-<usage=david>-poc-001
 
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
+So it will be, oci-dbin-benigt-david-poc-001
+more examples:
+oci-dbin-benigt-shyam-poc-001
+oci-dbin-benigt-akshay-poc-001
+oci-dbin-benigt-s3-poc-001
+oci-dbin-benigt-vm-poc-001
 
-      - name: Create Project, Workspaces, and Assign Team Access
-        env:
-          TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
-          TFC_ORG: ${{ secrets.TFC_ORG }}
-          SYSTEM: ${{ inputs.system }}
-          APP: ${{ inputs.app }}
-          ENVS: ${{ inputs.envs }}
-          ITERATION: ${{ inputs.iteration }}
-          TEAM_NAME: ${{ inputs.team_name }}
-        run: |
-          PROJECT_NAME="oci-${SYSTEM}-${APP}"
-          echo "Using Project Name: $PROJECT_NAME"
+---------
 
-          ### Check if project already exists ###
-      
-          echo "Checking if project already exists..."
-          existing_project_id=$(curl -s --request GET \
-            --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/projects" \
-            --header "Authorization: Bearer $TFC_TOKEN" \
-            --header "Content-Type: application/vnd.api+json" | jq -r \
-            --arg pname "$PROJECT_NAME" '.data[] | select(.attributes.name == $pname) | .id')
-
-          if [[ -n "$existing_project_id" ]]; then
-            echo "Project '$PROJECT_NAME' already exists. Failing workflow."
-            exit 1
-          fi
-
-          ### Create the Project ###
-
-          echo "Creating project: $PROJECT_NAME"
-          project_response=$(curl -s --request POST \
-            --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/projects" \
-            --header "Authorization: Bearer $TFC_TOKEN" \
-            --header "Content-Type: application/vnd.api+json" \
-            --data "{
-              \"data\": {
-                \"type\": \"projects\",
-                \"attributes\": {
-                  \"name\": \"$PROJECT_NAME\"
-                }
-              }
-            }")
-
-          project_id=$(echo "$project_response" | jq -r '.data.id')
-          echo "Project created with ID: $project_id"
-
-          ### Create workspaces and attach to project ###
-
-          IFS=',' read -ra ENV_LIST <<< "$ENVS"
-          declare -a WORKSPACE_IDS=()
-
-          for ENV in "${ENV_LIST[@]}"; do
-            WORKSPACE_NAME="oci-${SYSTEM}-${APP}-${ENV}-${ITERATION}"
-            echo "Creating workspace: $WORKSPACE_NAME"
-
-            workspace_response=$(curl -s --request POST \
-              --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/workspaces" \
-              --header "Authorization: Bearer $TFC_TOKEN" \
-              --header "Content-Type: application/vnd.api+json" \
-              --data "{
-                \"data\": {
-                  \"type\": \"workspaces\",
-                  \"attributes\": {
-                    \"name\": \"$WORKSPACE_NAME\"
-                  },
-                  \"relationships\": {
-                    \"project\": {
-                      \"data\": {
-                        \"id\": \"$project_id\",
-                        \"type\": \"projects\"
-                      }
-                    }
-                  }
-                }
-              }")
-
-            ws_id=$(echo "$workspace_response" | jq -r '.data.id')
-            echo "Workspace created: $WORKSPACE_NAME (ID: $ws_id)"
-            WORKSPACE_IDS+=("$ws_id")
-          done
-
-          ### Create Team ###
-
-          echo "Creating team: $TEAM_NAME"
-          team_response=$(curl -s --request POST \
-            --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/teams" \
-            --header "Authorization: Bearer $TFC_TOKEN" \
-            --header "Content-Type: application/vnd.api+json" \
-            --data "{
-              \"data\": {
-                \"type\": \"teams\",
-                \"attributes\": {
-                  \"name\": \"$TEAM_NAME\",
-                  \"visibility\" : \"organization\"
-                }
-              }
-            }")
-
-          echo "Team creation response:"
-          echo "$team_response" | jq .
-
-          team_id=$(echo "$team_response" | jq -r '.data.id')
-
-          if [[ "$team_id" == "null" || -z "$team_id" ]]; then
-            echo "Team creation failed."
-            exit 1
-          fi
-
-          echo "Team created with ID: $team_id"
-
-          ### Assign team write access to each workspace ###
-
-          for ws_id in "${WORKSPACE_IDS[@]}"; do
-            echo "Assigning team write access to workspace ID: $ws_id"
-
-            assign_output=$(curl -s -w "\n%{http_code}" --request POST \
-              --url "https://app.terraform.io/api/v2/team-workspaces" \
-              --header "Authorization: Bearer $TFC_TOKEN" \
-              --header "Content-Type: application/vnd.api+json" \
-              --data "{
-                \"data\": {
-                  \"type\": \"team-workspaces\",
-                  \"attributes\": {
-                    \"access\": \"write\"
-                  },
-                  \"relationships\": {
-                    \"workspace\": {
-                      \"data\": {
-                        \"id\": \"$ws_id\",
-                        \"type\": \"workspaces\"
-                      }
-                    },
-                    \"team\": {
-                      \"data\": {
-                        \"id\": \"$team_id\",
-                        \"type\": \"teams\"
-                      }
-                    }
-                  }
-                }
-              }")
-
-            assign_status=$(echo "$assign_output" | tail -n1)
-            assign_body=$(echo "$assign_output" | sed '$d')
-
-            if [[ "$assign_status" == "201" ]]; then
-              echo "Team write access assigned to $ws_id"
-            else
-              echo "Failed to assign team access to $ws_id. Status: $assign_status"
-              echo "$assign_body"
-            fi
-          done
+Then we need to make changes as per the below scenerios:
+ 
+Scenerio 1: when no of workspace is 1 and user enter no usage:
+Like: oci-dbin-benigt-poc-001
+ 
+Scenerio 2: when no of workspace is 5 and user enter no usage:
+If user do not enter any usage value, we increase the iteration by 1.
+Like:
+oci-dbin-benigt-poc-001
+oci-dbin-benigt-poc-002
+oci-dbin-benigt-poc-003
+oci-dbin-benigt-poc-004
+oci-dbin-benigt-poc-005
+ 
+ 
+Scenerio 3: when no of workspace is 1 and user enter usage as david:
+We can create the workspace
+Like:
+oci-dbin-benigt-david-poc-001
+ 
+Scenerio 4:Case when no of workspace is 5 and user enter usage for all 5 workspace:
+usage will be will change and iterations stays same 001
+Like:
+oci-dbin-benigt-david-poc-001
+oci-dbin-benigt-shyam-poc-001
+oci-dbin-benigt-akshay-poc-001
+oci-dbin-benigt-s3-poc-001
+oci-dbin-benigt-vm-poc-001
