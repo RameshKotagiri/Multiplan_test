@@ -1,113 +1,31 @@
-name: Delete TFC Project, Workspaces, and Team
+if [[ -n "$SELECTED_WS" ]]; then
+  IFS=',' read -ra WS_NAMES <<< "$SELECTED_WS"
+  echo "Deleting selected workspaces: ${WS_NAMES[*]}"
 
-on:
-  workflow_dispatch:
-    inputs:
-      project_name:
-        description: 'Enter the Project Name to delete'
-        required: true
-        type: string
-      team_name:
-        description: 'Enter the Team Name to delete (optional)'
-        required: false
-        type: string
-      confirm_delete:
-        description: 'Type YES to confirm deletion'
-        required: true
-        type: string
+  for name in "${WS_NAMES[@]}"; do
+    ws_id=$(curl -s --request GET \
+      --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/workspaces" \
+      --header "Authorization: Bearer $TFC_TOKEN" \
+      --header "Content-Type: application/vnd.api+json" | jq -r \
+      --arg pname "$name" '.data[] | select(.attributes.name == $pname) | .id')
 
-jobs:
-  delete-resources:
-    runs-on: arc-runner-set
+    if [[ -n "$ws_id" ]]; then
+      echo "Deleting workspace: $name (ID: $ws_id)"
+      curl -s --request DELETE \
+        --url "https://app.terraform.io/api/v2/workspaces/$ws_id" \
+        --header "Authorization: Bearer $TFC_TOKEN" \
+        --header "Content-Type: application/vnd.api+json"
+    else
+      echo "Workspace '$name' not found. Skipping."
+    fi
+  done
+else
+  echo "No selected workspaces provided. Deleting all workspaces in project..."
+  # existing loop for all project workspaces
+fi
 
-    steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v4
 
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
-
-      - name: Delete Project, Workspaces, and Team
-        env:
-          TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
-          TFC_ORG: ${{ secrets.TFC_ORG }}
-          PROJECT_NAME: ${{ inputs.project_name }}
-          TEAM_NAME: ${{ inputs.team_name }}
-          CONFIRM_DELETE: ${{ inputs.confirm_delete }}
-        run: |
-          if [[ "$CONFIRM_DELETE" != "YES" ]]; then
-            echo "Deletion not confirmed. Type YES to confirm."
-            exit 1
-          fi
-
-          echo "Fetching project ID for '$PROJECT_NAME'..."
-          project_id=$(curl -s --request GET \
-            --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/projects" \
-            --header "Authorization: Bearer $TFC_TOKEN" \
-            --header "Content-Type: application/vnd.api+json" | jq -r \
-            --arg pname "$PROJECT_NAME" '.data[] | select(.attributes.name == $pname) | .id')
-
-          if [[ -z "$project_id" ]]; then
-            echo "Project '$PROJECT_NAME' not found."
-            exit 1
-          fi
-
-          echo "Found project: $project_id"
-          echo "Fetching workspaces in project..."
-
-          workspaces=$(curl -s --request GET \
-            --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/workspaces" \
-            --header "Authorization: Bearer $TFC_TOKEN" \
-            --header "Content-Type: application/vnd.api+json" | jq -r \
-            --arg pid "$project_id" '.data[] | select(.relationships.project.data.id == $pid) | .id')
-
-          for ws_id in $workspaces; do
-            echo "Deleting workspace: $ws_id"
-            curl -s --request DELETE \
-              --url "https://app.terraform.io/api/v2/workspaces/$ws_id" \
-              --header "Authorization: Bearer $TFC_TOKEN" \
-              --header "Content-Type: application/vnd.api+json"
-            echo "Deleted workspace $ws_id"
-          done
-
-          echo "All workspaces deleted. Deleting project..."
-          curl -s --request DELETE \
-            --url "https://app.terraform.io/api/v2/projects/$project_id" \
-            --header "Authorization: Bearer $TFC_TOKEN" \
-            --header "Content-Type: application/vnd.api+json"
-
-          echo "Project '$PROJECT_NAME' deleted successfully."
-
-          if [[ -n "$TEAM_NAME" ]]; then
-            echo "Looking up team ID for '$TEAM_NAME'..."
-
-            next_url="https://app.terraform.io/api/v2/organizations/$TFC_ORG/teams"
-            while [[ -n "$next_url" ]]; do
-              response=$(curl -s --request GET \
-                --url "$next_url" \
-                --header "Authorization: Bearer $TFC_TOKEN" \
-                --header "Content-Type: application/vnd.api+json")
-
-              team_id=$(echo "$response" | jq -r --arg name "$TEAM_NAME" \
-                '.data[] | select(.attributes.name == $name) | .id')
-
-              if [[ -n "$team_id" && "$team_id" != "null" ]]; then
-                echo "Deleting team with ID: $team_id"
-                curl -s --request DELETE \
-                  --url "https://app.terraform.io/api/v2/teams/$team_id" \
-                  --header "Authorization: Bearer $TFC_TOKEN" \
-                  --header "Content-Type: application/vnd.api+json"
-                echo "Team '$TEAM_NAME' deleted successfully."
-                break
-              fi
-
-              next_url=$(echo "$response" | jq -r '.links.next // empty')
-            done
-
-            if [[ -z "$team_id" || "$team_id" == "null" ]]; then
-              echo "Team '$TEAM_NAME' not found."
-              exit 1
-            fi
-          else
-            echo "No team name provided. Skipping team deletion."
-          fi
+selected_workspaces:
+  description: 'Comma-separated list of workspace names to delete (optional)'
+  required: false
+  type: string
