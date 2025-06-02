@@ -81,6 +81,7 @@ jobs:
                 echo "Workspace '$ws_name' not found. Skipping."
               fi
             done
+          fi
           else
             echo "Fetching and deleting all workspaces under project ID: $project_id"
             workspaces=$(curl -s --request GET \
