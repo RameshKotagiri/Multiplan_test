@@ -12,7 +12,7 @@ on:
         required: false
         type: string
       selected_workspaces:
-        description: 'Comma-separated workspace names to delete (optional)'
+        description: 'Comma-separated list of workspace names to delete (optional)'
         required: false
         type: string
       confirm_delete:
@@ -57,6 +57,9 @@ jobs:
             exit 1
           fi
 
+          echo "Found project: $project_id"
+          echo "Fetching workspaces in project..."
+
           if [[ -n "$SELECTED_WS" ]]; then
             echo "Deleting selected workspaces only: $SELECTED_WS"
             IFS=',' read -ra WS_NAMES <<< "$SELECTED_WS"
@@ -96,12 +99,12 @@ jobs:
             done
 
             echo "All workspaces deleted. Deleting project..."
-            curl -s --request DELETE \
-              --url "https://app.terraform.io/api/v2/projects/$project_id" \
-              --header "Authorization: Bearer $TFC_TOKEN" \
-              --header "Content-Type: application/vnd.api+json"
-            echo "Project '$PROJECT_NAME' deleted successfully."
-          fi
+          curl -s --request DELETE \
+            --url "https://app.terraform.io/api/v2/projects/$project_id" \
+            --header "Authorization: Bearer $TFC_TOKEN" \
+            --header "Content-Type: application/vnd.api+json"
+
+          echo "Project '$PROJECT_NAME' deleted successfully."
 
           if [[ -n "$TEAM_NAME" ]]; then
             echo "Looking up team ID for '$TEAM_NAME'..."
@@ -131,6 +134,7 @@ jobs:
 
             if [[ -z "$team_id" || "$team_id" == "null" ]]; then
               echo "Team '$TEAM_NAME' not found."
+              exit 1
             fi
           else
             echo "No team name provided. Skipping team deletion."
