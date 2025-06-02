@@ -4,28 +4,28 @@ on:
   workflow_dispatch:
     inputs:
       system:
-        description: 'System name'
+        description: 'System'
         required: true
         type: string
       app:
-        description: 'Application code'
+        description: 'Application'
         required: true
         type: string
       workspace_count:
         description: 'Number of workspaces to create'
         required: true
         type: number
+      workspace_usage:
+        description: 'Workspace usage'
+        required: false
+        type: string
       team_name:
         description: 'Team name'
         required: true
         type: string
       sso_id:
-        description: 'SSO ID to link Azure AD group'
+        description: 'SSO ID'
         required: true
-        type: string
-      workspace_usage:
-        description: 'Optional usage label(s) (comma-separated)'
-        required: false
         type: string
       confirm_reuse:
         description: 'Type YES to reuse existing project if present'
@@ -56,13 +56,13 @@ jobs:
           USAGE: ${{ inputs.workspace_usage }}
           REUSE: ${{ inputs.confirm_reuse }}
         run: |
+          ENVIRONMENT="poc"
+          ITERATION="001"
           PROJECT_NAME="oci-${SYSTEM}-${APP}"
-          ENV="poc"
-          BASE_ITER="001"
-
+          
           echo "Using Project Name: $PROJECT_NAME"
           echo "Checking if project already exists..."
-
+          
           existing_project_id=$(curl -s --request GET \
             --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/projects" \
             --header "Authorization: Bearer $TFC_TOKEN" \
