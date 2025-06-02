@@ -1,34 +1,219 @@
-echo "Checking if team '$TEAM_NAME' already exists..."
-team_id=$(curl -s --request GET \
-  --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/teams" \
-  --header "Authorization: Bearer $TFC_TOKEN" \
-  --header "Content-Type: application/vnd.api+json" | jq -r \
-  --arg tname "$TEAM_NAME" '.data[] | select(.attributes.name == $tname) | .id')
+name: Create TFC Project, Workspaces and Assign Team Access
 
-if [[ -n "$team_id" ]]; then
-  echo "Team '$TEAM_NAME' already exists with ID: $team_id"
-else
-  echo "Creating team: $TEAM_NAME"
-  team_response=$(curl -s --request POST \
-    --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/teams" \
-    --header "Authorization: Bearer $TFC_TOKEN" \
-    --header "Content-Type: application/vnd.api+json" \
-    --data "{
-      \"data\": {
-        \"type\": \"teams\",
-        \"attributes\": {
-          \"name\": \"$TEAM_NAME\",
-          \"visibility\": \"organization\",
-          \"sso-team-id\": \"$SSO_ID\"
-        }
-      }
-    }")
-  team_id=$(echo "$team_response" | jq -r '.data.id')
+on:
+  workflow_dispatch:
+    inputs:
+      system:
+        description: 'System'
+        required: true
+        type: string
+      app:
+        description: 'Application'
+        required: true
+        type: string
+      workspace_count:
+        description: 'Number of workspaces to create'
+        required: true
+        type: number
+      workspace_usage:
+        description: 'Workspace usage'
+        required: false
+        type: string
+      team_name:
+        description: 'Team name'
+        required: true
+        type: string
+      sso_id:
+        description: 'SSO ID'
+        required: true
+        type: string
+      confirm_reuse:
+        description: 'Type YES to reuse existing project if present'
+        required: false
+        default: 'NO'
+        type: string
 
-  if [[ "$team_id" == "null" || -z "$team_id" ]]; then
-    echo "Team creation failed."
-    echo "$team_response"
-    exit 1
-  fi
-  echo "Team created with ID: $team_id"
-fi
+jobs:
+  create-resources:
+    runs-on: arc-runner-set
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Create Project, Workspaces, and Assign Team Access
+        env:
+          TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+          TFC_ORG: ${{ secrets.TFC_ORG }}
+          SYSTEM: ${{ inputs.system }}
+          APP: ${{ inputs.app }}
+          COUNT: ${{ inputs.workspace_count }}
+          TEAM_NAME: ${{ inputs.team_name }}
+          SSO_ID: ${{ inputs.sso_id }}
+          USAGE: ${{ inputs.workspace_usage }}
+          REUSE: ${{ inputs.confirm_reuse }}
+        run: |
+          ENVIRONMENT="poc"
+          ITERATION="001"
+          PROJECT_NAME="oci-${SYSTEM}-${APP}"
+          
+          echo "Using Project Name: $PROJECT_NAME"
+          echo "Checking if project already exists..."
+          
+          existing_project_id=$(curl -s --request GET \
+            --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/projects" \
+            --header "Authorization: Bearer $TFC_TOKEN" \
+            --header "Content-Type: application/vnd.api+json" | jq -r \
+            --arg pname "$PROJECT_NAME" '.data[] | select(.attributes.name == $pname) | .id')
+
+          if [[ -n "$existing_project_id" ]]; then
+            if [[ "$REUSE" != "YES" ]]; then
+              echo "Project '$PROJECT_NAME' already exists. Set confirm_reuse to YES to reuse."
+              exit 1
+            fi
+            echo "Reusing existing project with ID: $existing_project_id"
+            project_id="$existing_project_id"
+          else
+            echo "Creating project: $PROJECT_NAME"
+            project_response=$(curl -s --request POST \
+              --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/projects" \
+              --header "Authorization: Bearer $TFC_TOKEN" \
+              --header "Content-Type: application/vnd.api+json" \
+              --data "{
+                \"data\": {
+                  \"type\": \"projects\",
+                  \"attributes\": {
+                    \"name\": \"$PROJECT_NAME\"
+                  }
+                }
+              }")
+            project_id=$(echo "$project_response" | jq -r '.data.id')
+            echo "Project created with ID: $project_id"
+          fi
+
+          declare -a WORKSPACE_NAMES=()
+          declare -a WORKSPACE_IDS=()
+
+          echo "Creating $COUNT workspace(s)..."
+
+          if [[ -n "$USAGE" ]]; then
+            IFS=',' read -ra USAGE_ARRAY <<< "$USAGE"
+            if [[ "${#USAGE_ARRAY[@]}" -ne "$COUNT" ]]; then
+              echo "Mismatch: Provided ${#USAGE_ARRAY[@]} usage labels for $COUNT workspaces"
+              exit 1
+            fi
+            for usage in "${USAGE_ARRAY[@]}"; do
+              name="oci-${SYSTEM}-${APP}-${usage}-${ENVIRONMENT}-${ITERATION}"
+              WORKSPACE_NAMES+=("$name")
+            done
+          else
+            for ((i=1; i<=COUNT; i++)); do
+              iter=$(printf "%03d" "$i")
+              name="oci-${SYSTEM}-${APP}-${ENVIRONMENT}-${ITERATION}"
+              WORKSPACE_NAMES+=("$name")
+            done
+          fi
+
+          echo "Creating ${#WORKSPACE_NAMES[@]} workspaces..."
+          for ws_name in "${WORKSPACE_NAMES[@]}"; do
+            echo "Creating workspace: $ws_name"
+            workspace_response=$(curl -s --request POST \
+              --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/workspaces" \
+              --header "Authorization: Bearer $TFC_TOKEN" \
+              --header "Content-Type: application/vnd.api+json" \
+              --data "{
+                \"data\": {
+                  \"type\": \"workspaces\",
+                  \"attributes\": {
+                    \"name\": \"$ws_name\"
+                  },
+                  \"relationships\": {
+                    \"project\": {
+                      \"data\": {
+                        \"id\": \"$project_id\",
+                        \"type\": \"projects\"
+                      }
+                    }
+                  }
+                }
+              }")
+
+            ws_id=$(echo "$workspace_response" | jq -r '.data.id')
+            echo "Created workspace: $ws_name (ID: $ws_id)"
+            WORKSPACE_IDS+=("$ws_id")
+          done
+
+          echo "Checking if team '$TEAM_NAME' already exists..."
+            team_id=$(curl -s --request GET \
+              --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/teams" \
+              --header "Authorization: Bearer $TFC_TOKEN" \
+              --header "Content-Type: application/vnd.api+json" | jq -r \
+              --arg tname "$TEAM_NAME" '.data[] | select(.attributes.name == $tname) | .id')
+
+            if [[ -n "$team_id" ]]; then
+              echo "Team '$TEAM_NAME' already exists with ID: $team_id"
+            else
+              echo "Creating team: $TEAM_NAME"
+              team_response=$(curl -s --request POST \
+                --url "https://app.terraform.io/api/v2/organizations/$TFC_ORG/teams" \
+                --header "Authorization: Bearer $TFC_TOKEN" \
+                --header "Content-Type: application/vnd.api+json" \
+                --data "{
+                  \"data\": {
+                    \"type\": \"teams\",
+                    \"attributes\": {
+                      \"name\": \"$TEAM_NAME\",
+                      \"visibility\": \"organization\",
+                      \"sso-team-id\": \"$SSO_ID\"
+                    }
+                  }
+                }")
+              team_id=$(echo "$team_response" | jq -r '.data.id')
+
+              if [[ "$team_id" == "null" || -z "$team_id" ]]; then
+                echo "Team creation failed."
+                echo "$team_response"
+                exit 1
+              fi
+              echo "Team created with ID: $team_id"
+            fi
+
+          echo "Assigning team write access to each workspace..."
+          for ws_id in "${WORKSPACE_IDS[@]}"; do
+            assign_output=$(curl -s -w "\n%{http_code}" --request POST \
+              --url "https://app.terraform.io/api/v2/team-workspaces" \
+              --header "Authorization: Bearer $TFC_TOKEN" \
+              --header "Content-Type: application/vnd.api+json" \
+              --data "{
+                \"data\": {
+                  \"type\": \"team-workspaces\",
+                  \"attributes\": {
+                    \"access\": \"write\"
+                  },
+                  \"relationships\": {
+                    \"workspace\": {
+                      \"data\": {
+                        \"id\": \"$ws_id\",
+                        \"type\": \"workspaces\"
+                      }
+                    },
+                    \"team\": {
+                      \"data\": {
+                        \"id\": \"$team_id\",
+                        \"type\": \"teams\"
+                      }
+                    }
+                  }
+                }
+              }")
+            status=$(echo "$assign_output" | tail -n1)
+            if [[ "$status" == "201" ]]; then
+              echo "Assigned write access to workspace $ws_id"
+            else
+              echo "Failed to assign access to workspace $ws_id"
+              echo "$assign_output"
+            fi
+          done
