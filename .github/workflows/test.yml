@@ -1,35 +1,19 @@
- Inputs for Creation Workflow
-system
-System identifier
-Example: enterprise
-Required: ✅
+- **`project_name`**  
+  _TFC project name to delete_  
+  _Example_: `oci-enterprise-demo`  
+  _Required_: ✅
 
-app
-Application name
-Example: demo
-Required: ✅
+- **`team_name`**  
+  _(Optional) TFC team name to delete_  
+  _Example_: `devops-poc`  
+  _Required_: ❌
 
-workspace_count
-Number of workspaces to create
-Example: 3
-Required: ✅
+- **`selected_workspaces`**  
+  _(Optional) Comma-separated workspace names to delete only_  
+  _Example_: `oci-enterprise-demo-david-poc-001`  
+  _Required_: ❌
 
-workspace_usage
-(Optional) Comma-separated usage labels for each workspace
-Example: david,shyam,s3
-Required: ❌
-
-team_name
-TFC team name to create/assign
-Example: devops-poc
-Required: ✅
-
-sso_id
-Azure AD SSO group ID
-Example: MGSITSOCIAdmins
-Required: ✅
-
-confirm_reuse
-Type YES to reuse existing project if present
-Example: YES
-Required: ❌
+- **`confirm_delete`**  
+  _Type `YES` to confirm deletion_  
+  _Example_: `YES`  
+  _Required_: ✅
