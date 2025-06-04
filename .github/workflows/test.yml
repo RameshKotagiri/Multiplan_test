@@ -1,115 +1,36 @@
-# Terraform Cloud Project & Workspace Automation
+**Inputs:**
 
-This repository automates the creation and deletion of Terraform Cloud (TFC) **projects**, **workspaces**, and **team assignments** using GitHub Actions.
+- `system`  
+  System identifier  
+  Example: `enterprise`, `ppop`  
+  Required: ✅
 
----
+- `app`  
+  Application name  
+  Example: `demo`, `autobr`  
+  Required: ✅
 
-## Features
+- `workspace_count`  
+  Number of workspaces to create  
+  Example: `3`  
+  Required: ✅
 
-- **Create Project & Workspaces**
-  - Supports dynamic naming conventions.
-  - Allows creating one or more workspaces under a project.
-  - Accepts optional `workspace_usage` labels for custom naming.
-  - Associates team with project and maps SSO group ID.
-  - Optionally reuses an existing project or team.
+- `workspace_usage`  
+  (Optional) Comma-separated usage labels for each workspace  
+  Example: `crp,vault`  
+  Required: ❌
 
-- **Delete Project/Workspace/Team**
-  - Deletes a full project along with its workspaces.
-  - Allows selective workspace deletion within a project.
-  - Optionally deletes the assigned team.
+- `team_name`  
+  TFC team name to create/assign  
+  Example: `devops-poc`  
+  Required: ✅
 
----
+- `sso_id`  
+  Azure AD SSO group ID  
+  Example: `MGSITSOCIAdmins`  
+  Required: ✅
 
-## How to Use
-
-### Create Project & Workspaces
-
-Trigger the workflow **`Create TFC Project, Workspaces and Assign Team Access`** manually via GitHub Actions.
-
-#### Inputs for Creation Workflow
-**`system: System identifier`**
-  _Example: enterprise, dbin, ppop_
-  _Required:_ ✅
-
-**`app: Application name`**
-  _Example: demo, autobr_
-  _Required:_ ✅
-
-**`workspace_count: Number of workspaces to create`**
-  _Example: 3_
-  _Required:_ ✅
-
-**`workspace_usage: (Optional) Comma-separated usage labels for each workspace`**
-  _Example: crp, vault_
-  _Required:_ ❌
-
-**`team_name: TFC team name to create/assign`**
-  _Example: devops-poc_
-  _Required:_ ✅
-
-**`sso_id: Azure AD SSO group ID`**
-  _Example: MGSITSOCITeam_
-  _Required:_ ✅
-
-**`confirm_reuse: Type YES to reuse existing project if present`**
-  _Example: YES_
-  _Required:_ ❌                  
-
-#### Workspace Naming Logic:
-- With `workspace_usage`: `oci-<system>-<app>-<usage>-poc-001`
-- Without usage:
-  - If 1 workspace: `oci-<system>-<app>-poc-001`
-  - If >1 workspace: `oci-<system>-<app>-poc-00X` (iterates by count)
-
----
-
-### Delete Project / Workspaces / Team
-
-Trigger the workflow **`Delete TFC Project, Workspaces and Team`** manually via GitHub Actions.
-
-#### Inputs:
-
-- **`project_name`**  
-  _TFC project name to delete_  
-  _Example_: `oci-enterprise-demo`  
-  _Required_: ✅
-
-- **`team_name`**  
-  _(Optional) TFC team name to delete_  
-  _Example_: `devops-poc`  
-  _Required_: ❌
-
-- **`selected_workspaces`**  
-  _(Optional) Comma-separated workspace names to delete only_  
-  _Example_: `oci-enterprise-demo-david-poc-001`  
-  _Required_: ❌
-
-- **`confirm_delete`**  
-  _Type `YES` to confirm deletion_  
-  _Example_: `YES`  
-  _Required_: ✅
-
-#### Deletion Logic:
-- If `selected_workspaces` is provided, only those workspaces are deleted.
-- If not provided, all workspaces under the project are deleted, followed by project and (optional) team.
-
----
-
-## Secrets Required
-
-| Secret Name      | Description                               |
-|------------------|-------------------------------------------|
-| `TFC_TOKEN`      | Terraform Cloud Organization API token    |
-| `TFC_ORG`        | Terraform Cloud Organization name         |
-
----
-
-## Folder Structure
-
-```bash
-.
-├── .github
-│   └── workflows
-│       ├── create-project-workspace.yml
-│       └── delete-project-workspace.yml
-├── README.md
+- `confirm_reuse`  
+  Type `YES` to reuse existing project if present  
+  Example: `YES`  
+  Required: ❌
