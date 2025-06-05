@@ -1,98 +1,6 @@
 Workflow Details
 1. Create TFC Project, Workspaces, and Assign Team Access
 This workflow creates a Terraform Cloud project, a specified number of workspaces, and assigns write access to a team.
-Inputs
-Input
-
-Description
-
-Required
-
-Type
-
-Default
-
-system
-
-System name (e.g., 
-hr
-, 
-finance
-)
-
-Yes
-
-String
-
--
-
-app
-
-Application name (e.g., 
-payroll
-, 
-billing
-)
-
-Yes
-
-String
-
--
-
-workspace_count
-
-Number of workspaces to create
-
-Yes
-
-Number
-
--
-
-workspace_usage
-
-Comma-separated list of usage labels (e.g., 
-dev,prod
-)
-
-No
-
-String
-
--
-
-team_name
-
-Name of the team to create or use
-
-Yes
-
-String
-
--
-
-sso_id
-
-SSO ID for the team
-
-Yes
-
-String
-
--
-
-confirm_reuse
-
-Type 
-YES
- to reuse an existing project if found
-
-No
-
-String
-
-NO
 
 Behavior
 Project Creation: Creates a project named oci-<system>-<app> unless it exists and confirm_reuse is set to YES.
@@ -103,92 +11,8 @@ Team Management: Creates a team with the specified team_name and sso_id if it do
 
 Safety Checks: Validates that the number of workspace_usage labels matches workspace_count and checks for existing projects/teams.
 
-Usage Instructions
-Navigate to the repository in GitHub.
-
-Go to the Actions tab and select the Create TFC Project, Workspaces, and Assign Team Access workflow.
-
-Click Run workflow and enter the required inputs (see example below).
-
-Submit the workflow to start the process.
-
-Check the workflow logs for status and any errors.
-
-Example
-To create a project oci-hr-payroll with two workspaces (dev, prod) and assign access to a team hr-team:
-Inputs:
-system: hr
-
-app: payroll
-
-workspace_count: 2
-
-workspace_usage: dev,prod
-
-team_name: hr-team
-
-sso_id: sso-12345
-
-confirm_reuse: YES (to reuse an existing project)
-
-Result: Creates project oci-hr-payroll, workspaces oci-hr-payroll-dev-poc-001 and oci-hr-payroll-prod-poc-001, and assigns write access to hr-team.
-
 2. Delete TFC Project, Workspaces, and Team
 This workflow deletes a specified project, its workspaces, and optionally a team in Terraform Cloud.
-Inputs
-Input
-
-Description
-
-Required
-
-Type
-
-Default
-
-project_name
-
-Name of the project to delete (e.g., 
-oci-hr-payroll
-)
-
-Yes
-
-String
-
--
-
-team_name
-
-Name of the team to delete (optional)
-
-No
-
-String
-
--
-
-selected_workspaces
-
-Comma-separated list of workspace names to delete (optional)
-
-No
-
-String
-
--
-
-confirm_delete
-
-Type 
-YES
- to confirm deletion
-
-Yes
-
-String
-
--
 
 Behavior
 Workspace Deletion: Deletes specified workspaces (if selected_workspaces is provided) or all workspaces under the project.
@@ -199,27 +23,10 @@ Team Deletion: Deletes the specified team if team_name is provided.
 
 Safety Checks: Requires confirm_delete to be YES and verifies the existence of the project/team before deletion.
 
-Usage Instructions
-Navigate to the repository in GitHub.
+Best Practices
+Naming Conventions: Use consistent system and app names to align with the oci-<system>-<app> pattern.
 
-Go to the Actions tab and select the Delete TFC Project, Workspaces, and Team workflow.
+Input Validation: Ensure workspace_count matches the number of workspace_usage labels to avoid errors.
 
-Click Run workflow and enter the required inputs (see example below).
-
-Submit the workflow to start the deletion process.
-
-Check the workflow logs for status and any errors.
-
-Example
-To delete project oci-hr-payroll, specific workspaces, and team hr-team:
-Inputs:
-project_name: oci-hr-payroll
-
-team_name: hr-team
-
-selected_workspaces: oci-hr-payroll-dev-poc-001,oci-hr-payroll-prod-poc-001
-
-confirm_delete: YES
-
-Result: Deletes the specified workspaces and team, leaving the project intact. If no selected_workspaces is provided, deletes all workspaces and the project.
+Safety Features: Always use confirm_reuse and confirm_delete to prevent accidental overwrites or deletions.
 
