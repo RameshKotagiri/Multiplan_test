@@ -1,36 +1,19 @@
-**Inputs:**
+This guide explains how to use the GitHub repository for managing Terraform Cloud (TFC) resources, including creating and deleting projects, workspaces, and team access. The repository contains two GitHub Actions workflows to automate these tasks.
+Overview
+The repository provides two workflows to streamline Terraform Cloud resource management:
+Create TFC Project, Workspaces, and Assign Team Access: Creates a TFC project, a specified number of workspaces, and assigns write access to a team.
 
-- `system`  
-  System identifier  
-  Example: `enterprise`, `ppop`  
-  Required: ✅
+Delete TFC Project, Workspaces, and Team: Deletes a specified project, its associated workspaces, and optionally a team.
 
-- `app`  
-  Application name  
-  Example: `demo`, `autobr`  
-  Required: ✅
+These workflows are designed to ensure consistent naming conventions, reduce manual errors, and enforce safety checks for resource creation and deletion.
+Prerequisites
+Before using the workflows, ensure the following are set up:
+Terraform Cloud Account: You need access to a Terraform Cloud organization with a valid API token.
 
-- `workspace_count`  
-  Number of workspaces to create  
-  Example: `3`  
-  Required: ✅
+GitHub Repository Access: Ensure you have permissions to the repository containing the workflows.
 
-- `workspace_usage`  
-  (Optional) Comma-separated usage labels for each workspace  
-  Example: `crp,vault`  
-  Required: ❌
+GitHub Secrets:
+TFC_TOKEN: A Terraform Cloud API token with permissions to manage projects, workspaces, and teams.
 
-- `team_name`  
-  TFC team name to create/assign  
-  Example: `devops-poc`  
-  Required: ✅
+TFC_ORG: The name of your Terraform Cloud organization.
 
-- `sso_id`  
-  Azure AD SSO group ID  
-  Example: `MGSITSOCIAdmins`  
-  Required: ✅
-
-- `confirm_reuse`  
-  Type `YES` to reuse existing project if present  
-  Example: `YES`  
-  Required: ❌
