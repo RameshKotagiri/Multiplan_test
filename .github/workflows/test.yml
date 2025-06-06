@@ -1,9 +1,14 @@
 - name: Check OCI CLI Version
- run: |
- if command -v oci &> /dev/null; then
- echo "OCI CLI is installed. Version:"
- oci --version
- else
- echo "OCI CLI is not installed."
- exit 1
- fi
+        run: |
+          if command -v oci &> /dev/null; then
+            echo "OCI CLI is installed. Version:"
+            oci --version
+          else
+            echo "OCI CLI is not installed."
+            exit 1
+          fi
+
+      # Install OCI CLI since it's likely not pre-installed
+      - name: Install OCI CLI
+        run: |
+          pip install oci-cli
