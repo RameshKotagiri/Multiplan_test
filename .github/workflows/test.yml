@@ -1,28 +1,9 @@
-run: |
- # Configure OCI CLI manually
- mkdir -p ~/.oci
- echo "[DEFAULT]" > ~/.oci/config
- echo "user=${{ secrets.OCI_USER_OCID }}" >> ~/.oci/config
- echo "tenancy=${{ secrets.OCI_TENANCY_OCID }}" >> ~/.oci/config
- echo "fingerprint=${{ secrets.OCI_API_FINGERPRINT }}" >> ~/.oci/config
- echo "key_file=~/.oci/private_key.pem" >> ~/.oci/config
- echo "region=${{ secrets.OCI_REGION }}" >> ~/.oci/config
- echo "${{ secrets.OCI_PRIVATE_KEY }}" > ~/.oci/private_key.pem
- chmod 600 ~/.oci/private_key.pem
-
- # Run the OCI CLI command directly
- RAW_OUTPUT=$(oci secrets secret-bundle get \
- --secret-id "$OCI_VAULT_SECRET_OCID" \
- --query "data.\"secret-bundle-content\".content" \
- --raw-output)
-
- if [ $? -ne 0 ]; then
- echo "::error::Failed to retrieve vault secret"
+- name: Check OCI CLI Version
+ run: |
+ if command -v oci &> /dev/null; then
+ echo "OCI CLI is installed. Version:"
+ oci --version
+ else
+ echo "OCI CLI is not installed."
  exit 1
  fi
-
- # Set the output for the next step
- echo "raw_output=$RAW_OUTPUT" >> $GITHUB_OUTPUT
-
- # Clean up sensitive files
- rm -f ~/.oci/private_key.pem
