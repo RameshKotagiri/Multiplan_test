@@ -1,167 +1,28 @@
-name: Create OCI Credential in Jenkins
+run: |
+ # Configure OCI CLI manually
+ mkdir -p ~/.oci
+ echo "[DEFAULT]" > ~/.oci/config
+ echo "user=${{ secrets.OCI_USER_OCID }}" >> ~/.oci/config
+ echo "tenancy=${{ secrets.OCI_TENANCY_OCID }}" >> ~/.oci/config
+ echo "fingerprint=${{ secrets.OCI_API_FINGERPRINT }}" >> ~/.oci/config
+ echo "key_file=~/.oci/private_key.pem" >> ~/.oci/config
+ echo "region=${{ secrets.OCI_REGION }}" >> ~/.oci/config
+ echo "${{ secrets.OCI_PRIVATE_KEY }}" > ~/.oci/private_key.pem
+ chmod 600 ~/.oci/private_key.pem
 
-on:
-  workflow_dispatch:
-  push:
-    branches:
-      - feature/create-oci-credential-jenkins
+ # Run the OCI CLI command directly
+ RAW_OUTPUT=$(oci secrets secret-bundle get \
+ --secret-id "$OCI_VAULT_SECRET_OCID" \
+ --query "data.\"secret-bundle-content\".content" \
+ --raw-output)
 
-jobs:
-  create-oci-credential-in-jenkins:
-    runs-on: arc-runner-set
+ if [ $? -ne 0 ]; then
+ echo "::error::Failed to retrieve vault secret"
+ exit 1
+ fi
 
-    steps:
-      # Checkout the repository to access the workflow files
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+ # Set the output for the next step
+ echo "raw_output=$RAW_OUTPUT" >> $GITHUB_OUTPUT
 
-      # Set up Python for running OCI CLI commands
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-
-      # Install required dependencies for the workflow
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y curl jq dnsutils
-
-      # Retrieve the secret from OCI Vault
-      - name: Retrieve Vault Secret
-        id: retrieve-secret
-        uses: oracle-actions/run-oci-cli-command@v1.3.2
-        env:
-          OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING: "True"
-          OCI_CLI_USER: ${{ secrets.OCI_USER_OCID }}
-          OCI_CLI_TENANCY: ${{ secrets.OCI_TENANCY_OCID }}
-          OCI_CLI_FINGERPRINT: ${{ secrets.OCI_API_FINGERPRINT }}
-          OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_PRIVATE_KEY }}
-          OCI_CLI_REGION: ${{ secrets.OCI_REGION }}
-        with:
-          command: >
-            oci secrets secret-bundle get
-            --secret-id "${{ secrets.OCI_VAULT_SECRET_OCID }}"
-            --query "data.\"secret-bundle-content\".content"
-            --raw-output
-
-      # Parse the retrieved vault secret into individual fields
-      - name: Parse Vault Secret
-        env:
-          SECRET_CONTENT: ${{ steps.retrieve-secret.outputs.raw_output }}
-          OCI_CLI_USER: ${{ secrets.OCI_USER_OCID }}
-        run: |
-          echo "Decoding secret content..."
-          DECODED_CONTENT=$(echo "$SECRET_CONTENT" | base64 --decode)
-
-          if [ -z "$DECODED_CONTENT" ]; then
-            echo "::error::Secret content is empty after decoding"
-            exit 1
-          fi
-
-          # Parse the secret content into individual fields
-          TENANCY_ID=$(echo "$DECODED_CONTENT" | grep '^tenancy=' | cut -d'=' -f2)
-          USER_ID=$(echo "$DECODED_CONTENT" | grep '^user=' | cut -d'=' -f2 || echo "$OCI_CLI_USER")
-          FINGERPRINT=$(echo "$DECODED_CONTENT" | grep '^fingerprint=' | cut -d'=' -f2)
-          REGION=$(echo "$DECODED_CONTENT" | grep '^region=' | cut -d'=' -f2)
-          PRIVATE_KEY=$(echo "$DECODED_CONTENT" | sed -n '/^private_key=/,/-----END RSA PRIVATE KEY-----/p' | sed 's/^private_key=//')
-
-          # Mask each sensitive value
-          TENANCY_ID_MASKED=$(echo "$TENANCY_ID" | tr '\n' '|' | sed 's/|/\\n/g')
-          echo "::add-mask::$TENANCY_ID_MASKED"
-          USER_ID_MASKED=$(echo "$USER_ID" | tr '\n' '|' | sed 's/|/\\n/g')
-          echo "::add-mask::$USER_ID_MASKED"
-          FINGERPRINT_MASKED=$(echo "$FINGERPRINT" | tr '\n' '|' | sed 's/|/\\n/g')
-          echo "::add-mask::$FINGERPRINT_MASKED"
-          PRIVATE_KEY_MASKED=$(echo "$PRIVATE_KEY" | tr '\n' '|' | sed 's/|/\\n/g')
-          echo "::add-mask::$PRIVATE_KEY_MASKED"
-
-          # Write to a temporary file to avoid logging in $GITHUB_ENV
-          echo "TENANCY_ID=$TENANCY_ID" >> secrets.env
-          echo "USER_ID=$USER_ID" >> secrets.env
-          echo "FINGERPRINT=$FINGERPRINT" >> secrets.env
-          echo "REGION=$REGION" >> secrets.env
-          echo "PRIVATE_KEY<<EOF" >> secrets.env
-          echo "$PRIVATE_KEY" >> secrets.env
-          echo "EOF" >> secrets.env
-          echo "CREDENTIAL_ID=oci-vault-credential-$(date +%s)" >> secrets.env
-
-          # Source the file into $GITHUB_ENV without logging
-          cat "secrets.env" >> $GITHUB_ENV
-          echo "Secret retrieved successfully"
-
-      # Fetch the Jenkins CSRF crumb for secure API requests
-      - name: Get Jenkins CSRF Crumb
-        id: crumb
-        env:
-          JENKINS_URL: ${{ secrets.JENKINS_BASE_URL }}
-          JENKINS_USER: ${{ secrets.JENKINS_USER }}
-          JENKINS_API_TOKEN: ${{ secrets.JENKINS_API_TOKEN }}
-        run: |
-          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
-            --user "$JENKINS_USER:$JENKINS_API_TOKEN" \
-            "$JENKINS_URL/crumbIssuer/api/json")
-          
-          HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS" | cut -d':' -f2)
-          CRUMB_JSON=$(echo "$RESPONSE" | grep -v "HTTP_STATUS")
-
-          if [[ "$HTTP_STATUS" -ne 200 ]]; then
-            echo "::error::Failed to fetch CSRF crumb. HTTP Status: $HTTP_STATUS, Response: $CRUMB_JSON"
-            exit 1
-          fi
-
-          echo "crumb_field=$(echo "$CRUMB_JSON" | jq -r .crumbRequestField)" >> $GITHUB_OUTPUT
-          echo "crumb_value=$(echo "$CRUMB_JSON" | jq -r .crumb)" >> $GITHUB_OUTPUT
-
-      # Create the OCI credential in the Jenkins folder OCI-POC/OCI-CCP
-      - name: Create OCI Credential in Jenkins Folder
-        env:
-          JENKINS_URL: ${{ secrets.JENKINS_BASE_URL }}
-          JENKINS_USER: ${{ secrets.JENKINS_USER }}
-          JENKINS_API_TOKEN: ${{ secrets.JENKINS_API_TOKEN }}
-          CREDENTIAL_ID: ${{ env.CREDENTIAL_ID }}
-          TENANCY_ID: ${{ env.TENANCY_ID }}
-          USER_ID: ${{ env.USER_ID }}
-          FINGERPRINT: ${{ env.FINGERPRINT }}
-          PRIVATE_KEY: ${{ env.PRIVATE_KEY }}
-          REGION: ${{ env.REGION }}
-          CRUMB_FIELD: ${{ steps.crumb.outputs.crumb_field }}
-          CRUMB_VALUE: ${{ steps.crumb.outputs.crumb_value }}
-        run: |
-          # Escape the private key for XML
-          PRIVATE_KEY_ESCAPED=$(printf '%s' "$PRIVATE_KEY" | sed ':a;N;$!ba;s/\n/\\n/g')
-
-          # Create the XML payload for the credential
-          cat > credential.xml <<EOF
-          <com.oracle.cloud.baremetal.jenkins.credentials.BaremetalCloudCredentialsImpl>
-            <scope>GLOBAL</scope>
-            <id>$CREDENTIAL_ID</id>
-            <description>OCI Credential from Vault</description>
-            <tenantId>$TENANCY_ID</tenantId>
-            <userId>$USER_ID</userId>
-            <fingerprint>$FINGERPRINT</fingerprint>
-            <privateKey>$PRIVATE_KEY_ESCAPED</privateKey>
-            <passPhrase></passPhrase>
-            <region>$REGION</region>
-            <useInstancePrincipal>false</useInstancePrincipal>
-          </com.oracle.cloud.baremetal.jenkins.credentials.BaremetalCloudCredentialsImpl>
-          EOF
-
-          # Send the API request to create the credential
-          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
-            -X POST "$JENKINS_URL/view/OCI-POC/job/OCI-CCP/credentials/store/folder/domain/_/createCredentials" \
-            --user "$JENKINS_USER:$JENKINS_API_TOKEN" \
-            -H "Content-Type: application/xml" \
-            -H "$CRUMB_FIELD: $CRUMB_VALUE" \
-            --data @credential.xml)
-
-          HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS" | cut -d':' -f2)
-          if [[ "$HTTP_STATUS" -ne 200 ]]; then
-            echo "::error::Failed to create Jenkins credential. HTTP Status: $HTTP_STATUS, Response: $(echo "$RESPONSE" | grep -v "HTTP_STATUS")"
-            exit 1
-          fi
-
-          echo "OCI credential created successfully in folder with ID: $CREDENTIAL_ID"
-
-          # Clean up sensitive files
-          rm -f credential.xml
+ # Clean up sensitive files
+ rm -f ~/.oci/private_key.pem
