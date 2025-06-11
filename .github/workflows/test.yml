@@ -1,131 +1,24 @@
-name: Creation of Tf workspace variables
+provider "oci" {
+  tenancy_ocid     = "ocid1.tenancy.oc1..example"
+  user_ocid        = "ocid1.user.oc1..example"
+  fingerprint      = "00:11:22:33:44:55:66:77:88:99:aa:bb:cc:dd:ee:ff"
+  private_key_path = "~/.oci/oci_api_key.pem"
+  region           = "us-ashburn-1"
+}
 
-on:
-  push:
-    branches:
-      - feature-yaml-workspace-variable
+resource "oci_objectstorage_bucket" "non_compliant" {
+  compartment_id = "ocid1.compartment.oc1..example"
+  name           = "non-compliant-bucket-${random_id.unique.hex}"
+  namespace      = "your-namespace"
+}
 
-jobs:
-  fetch-and-upload-secrets:
-    runs-on: arc-custom-runner-set-oci
+resource "oci_objectstorage_bucket" "compliant" {
+  compartment_id = "ocid1.compartment.oc1..example"
+  name           = "compliant-bucket-${random_id.unique.hex}"
+  namespace      = "your-namespace"
+  kms_key_id     = "ocid1.key.oc1..example"
+}
 
-    steps:
-      # Checkout the repository to access the workflow files
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      # Set up Python for running OCI CLI commands
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-
-      # Install required dependencies for the workflow
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y curl jq
-
-      - name: Add OCI CLI to PATH
-        run: |
-          echo "/home/runner/bin" >> $GITHUB_PATH
-
-      - name: Configure OCI CLI from GitHub Secrets
-        run: |
-          mkdir -p ~/.oci
-          echo "${{ secrets.OCI_CONFIG_CONTENT }}" > ~/.oci/config
-          echo "${{ secrets.OCI_PRIVATE_KEY_CONTENT }}" > ~/.oci/oci_api_key.pem
-          chmod 600 ~/.oci/config ~/.oci/oci_api_key.pem
-          echo "✅ OCI CLI configured from GitHub Secrets"
-
-      - name: Get Terraform Workspace Outputs
-        id: tf-outputs
-        uses: hashicorp/tfc-workflows-github/actions/workspace-output@v1.3.0
-        with:
-          workspace: "oci-test-test-test-001"
-          token: "${{ secrets.TF_API_TOKEN }}"
-          organization: "cldhorizon"
-
-      - name: Extract Workspace ID
-        id: extract-workspace-id
-        run: |
-          echo "${{ steps.tf-outputs.outputs.outputs }}" > tf_outputs.json
-          WORKSPACE_ID=$(jq -r '.workspace_id.value' tf_outputs.json)
-          echo "WORKSPACE_ID=$WORKSPACE_ID" >> $GITHUB_ENV
-
-      - name: Run secret fetch and upload script
-        env:
-          VAULT_NAME: ccp-poc-vlt-001
-          COMPARTMENT_ID: ocid1.compartment.oc1..aaaaaaaa6epgbx4ujj5fyqokmrstwwm3gizipwfxkkqpc3zpozwgzmf6ddaq
-          CONFIG_FILE: ~/.oci/config
-          BEARER_TOKEN: "${{ secrets.TF_API_TOKEN }}"
-          WORKSPACE_ID: "ws-vMETHrtMsUS8KpRi"
-        run: |
-          #!/bin/bash
-          vault_name="$VAULT_NAME"
-          compartment_id="$COMPARTMENT_ID"
-          config_file="$CONFIG_FILE"
-          workspace_id="$WORKSPACE_ID"
-          bearer_token="$BEARER_TOKEN"
-
-          vault_id=$(oci kms management vault list --compartment-id "$compartment_id" --config-file "$config_file" | jq -r --arg name "$vault_name" '.data[] | select(."display-name" == $name) | .id')
-          if [ -z "$vault_id" ]; then
-            echo "Vault not found: $vault_name"
-            exit 1
-          fi
-
-          secrets_json=$(oci vault secret list --compartment-id "$compartment_id" --config-file "$config_file")
-          declare -A secrets_id
-          while IFS=: read -r name id; do
-            secrets_id["$name"]="$id"
-          done < <(echo "$secrets_json" | jq -r '.data[] | select(."secret-name") | "\(.["secret-name"]):\(.id)"')
-
-          get_secret_value_by_name() {
-            local name=$1
-            local ocid=${secrets_id[$name]}
-            local content=$(oci secrets secret-bundle get --secret-id "$ocid" --query "data.\"secret-bundle-content\".content" --raw-output --config-file "$config_file")
-            echo "$content" | base64 --decode
-          }
-
-          name_keywords=("ccp-poc-idu-002")
-          declare -A decoded_secret_values
-
-          for secret_name in "${!secrets_id[@]}"; do
-            for keyword in "${name_keywords[@]}"; do
-              if [[ "$secret_name" == *"$keyword"* ]]; then
-                echo "Processing secret: $secret_name"
-                secret_value=$(get_secret_value_by_name "$secret_name")
-
-                USER_ID=$(echo "$secret_value" | grep '^user=' | cut -d'=' -f2-)
-                FINGERPRINT=$(echo "$secret_value" | grep '^fingerprint=' | cut -d'=' -f2-)
-                TENANCY_ID=$(echo "$secret_value" | grep '^tenancy=' | cut -d'=' -f2-)
-
-                PRIVATE_KEY=$(echo "$secret_value" | awk '/^privatekey=/{flag=1; next} flag' | sed '/^$/d')
-                PRIVATE_KEY_TRIMMED=$(echo "$PRIVATE_KEY" | sed -n '/-----BEGIN PRIVATE KEY-----/,/-----END PRIVATE KEY-----/p' | sed '/-----BEGIN PRIVATE KEY-----/d' | sed '/-----END PRIVATE KEY-----/d')
-
-                decoded_secret_values["user"]="$USER_ID"
-                decoded_secret_values["fingerprint"]="$FINGERPRINT"
-                decoded_secret_values["tenancy"]="$TENANCY_ID"
-                decoded_secret_values["privatekey"]="$PRIVATE_KEY_TRIMMED"
-              fi
-            done
-          done
-
-          for key in "${!decoded_secret_values[@]}"; do
-            value="${decoded_secret_values[$key]}"
-            sensitive=false
-            [ "$key" == "privatekey" ] && sensitive=true
-
-            json_payload=$(jq -n \
-              --arg key "$key" \
-              --arg value "$value" \
-              --argjson sensitive "$sensitive" \
-              '{data: {type: "vars", attributes: {key: $key, value: $value, description: "new POC variable", category: "terraform", hcl: false, sensitive: $sensitive}}}')
-
-            echo "Sending variable: $key"
-            curl --silent --show-error --fail \
-              --header "Authorization: Bearer $bearer_token" \
-              --header "Content-Type: application/vnd.api+json" \
-              --request POST \
-              --data "$json_payload" \
-              "https://app.terraform.io/api/v2/workspaces/$workspace_id/vars"
+resource "random_id" "unique" {
+  byte_length = 4
+}
