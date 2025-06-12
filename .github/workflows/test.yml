@@ -1,3 +1,7 @@
-$key = Get-Content "path\to\oci_private_key.pem" -Raw
-$key = $key -replace '\r\n', '' -replace '\n', ''
-$key | Set-Clipboard
+provider "oci" {
+tenancy_ocid = var.tenancy_ocid
+user_ocid = var.user_ocid
+private_key = var.private_key
+fingerprint = var.fingerprint
+region = var.region
+}
