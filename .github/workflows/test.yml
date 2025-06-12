@@ -1,7 +1,24 @@
-provider "oci" {
-tenancy_ocid = var.tenancy_ocid
-user_ocid = var.user_ocid
-private_key = var.private_key
-fingerprint = var.fingerprint
-region = var.region
+variable "tenancy_ocid" {
+  type        = string
+  description = "The OCID of the OCI tenancy"
+}
+
+variable "user_ocid" {
+  type        = string
+  description = "The OCID of the OCI user"
+}
+
+variable "private_key" {
+  type        = string
+  description = "The private key for OCI authentication"
+}
+
+variable "fingerprint" {
+  type        = string
+  description = "The fingerprint of the OCI public key"
+}
+
+variable "region" {
+  type        = string
+  description = "The OCI region"
 }
