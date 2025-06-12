@@ -1,53 +1,16 @@
-provider "oci" {
-  tenancy_ocid     = "ocid1.tenancy.oc1..aaaaaaaamtvtn7a7y4b7mo7yihimhfbjf5wqhqyzi5t7djdnkoatxyqkq5aa"
-  user_ocid        = "ocid1.user.oc1..aaaaaaaacawq3yo4d2qoyn6n4dqbqpmump3htnbr6lomafgueki3ffcuxwyq"
-  fingerprint      = "b4:25:bd:14:06:46:58:dc:fe:69:02:8d:ae:03:37:7d"
-  private_key = <<EOT
-  -----BEGIN PRIVATE KEY-----
-MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC5ZaHEHPBIh7fW
-UvGB32oS0lSd8Ec9uy2fF0zu265JBZezrqOljPCiOA0U08jSBwlwDdwB7eIf3iMR
-/uBDmdBaOJ9UfAbsDbMRakhmeWbRJhivDYFPTP2e/8I6XaEgNAMe92IcrJ/UEpv5
-Nrrw3AxArSE/RBkMBXV+PBZg5wc910gPMvU7cu7I8sL8qtcTUD7iFG/tkxgo8cfL
-mJ4eXGSW9W9yL3AwPRerGXfy6CB88yNhfnUtceS+m57p2c2gbSgtr8sBp4HhlD8Z
-u7MKtSoVZy4w4F40EPPQ9qR6HKLKQn2haU1v/N7akEfOkqlq2tZ02/vpMffFM1xW
-PYFkJMwNAgMBAAECggEASch6wrPJpPPuY+uKlec2LdtrNZgEojq2A1Sgl4byK7mA
-EFB2bFJVChpIintmtr96MBAz+MiVb51WU7kdw4mZc+6I6nSZxKQHGe00dyPlmWMR
-+8jiJ486eGbNA7FziH9qpo5Ji6Pfz+TAEkSHzYelkK/WRXlyhmg9xElhlpsbNK6l
-Vgc0nsRcwaNlhdA5StCbGWyHqT+IVjlxoN1K50TUQHFBdPTGkpRneJLIStw6a506
-k5kmQJ+vfp4jiWMScSkRbJztki/NujjUPmUHmyZpkR++uvgScnalhRYIrTx8kCVD
-fugW6d/gkcGqn/9R9NFmiU4WluMwwqoplU98iQMEuQKBgQDfoYE9gkan89+LClQZ
-mc0rydhrGHkFjwL9BrYm7Yvt67RtLKVNXpytPhBRdMHf0nZjXp/nHHK64ajCw0x/
-d1n2zmJQokHBEAfqefkT06gS2fTkBH9OzTd4MiRgYODQJ4zHn2vcVDaTX3ZHm2hr
-VhtEaRF2CyX046yA1hyXh5yJ8wKBgQDUO2VUVbxALXgghAS7rZeq73xCLfoAK7XT
-e2EfiRNAOK0YRnW+obMBVbZcSJe0JzPhUN0ViblqYp2ah+SkgyTfxZfbFKar+IdX
-AcgtZXAFWn0lk0YX/p78BoNzybga1Hl9Cee2domr/MwahwvV4a0k1dIuCAna+UpG
-jNuywQjR/wKBgQDcQ1DuanB5YITfh+7JwGkLJiXZZiNdTDzfR0sGEJbwYmY12fF+
-wR+Eq0qbUGrcr4kX2s2Ybra6RyVXn9CrA71CkIjZbtdg9w807apc0u4Kk07Xf259
-CTgHVSvrGcCUhT/uJqGwQ+n1QeNYKEOy5P66ZNpj8BsUl2MDCuDihxmx7QKBgQC5
-OWFVOkJCzKwzzKSI25cr4zlSVOgEsCFPgjWgnTSE7zH6prvqdRtSRekTH3PvEevQ
-cI+TVZDSDWE5VfKxtZdACSZgWOSh4BTWVcLMA+TBd1kTqzYYiOteT5z4OAwKtneV
-LkjhUREUXlwPpt8oen5vUIHQFMntJ3awngy8NIarJwKBgEd+qGrLlesvX9oOkFtN
-eWWabVVYkJ7WSZ776id7bmgEC9iZzNI74+fF5L++ARkuL7pPNL+DIJQ33vICjnum
-3KWaQe/UZT9AwT5HwDZOTM8Tizlk8R+2DwvtJTbCsBdpnC6VUAcj25Cp1DERGbYV
-PASsdjVR4WMjdmjdNsuUrBRb
------END PRIVATE KEY-----
-EOT
-  region           = "us-phoenix-1"
-}
-
-resource "oci_objectstorage_bucket" "non_compliant" {
-  compartment_id = "ocid1.compartment.oc1..aaaaaaaa6epgbx4ujj5fyqokmrstwwm3gizipwfxkkqpc3zpozwgzmf6ddaq"
-  name           = "non-compliant-bucket-${random_id.unique.hex}"
-  namespace      = "axlo0xjafwdf"
-}
-
-# resource "oci_objectstorage_bucket" "compliant" {
-#   compartment_id = "ocid1.compartment.oc1..example"
-#   name           = "compliant-bucket-${random_id.unique.hex}"
-#   namespace      = "your-namespace"
-#   kms_key_id     = "ocid1.key.oc1..example"
-# }
-
-resource "random_id" "unique" {
-  byte_length = 4
-}
+PS C:\Users\ramesh.kotagiri\Desktop\Source\iac-corecloudplatform> git push --set-upstream origin feature/bucket-encryption-policy
+Enumerating objects: 20, done.
+Counting objects: 100% (20/20), done.
+Delta compression using up to 4 threads
+Compressing objects: 100% (12/12), done.
+Writing objects: 100% (19/19), 60.66 MiB | 3.37 MiB/s, done.
+Total 19 (delta 1), reused 0 (delta 0), pack-reused 0
+remote: Resolving deltas: 100% (1/1), done.
+remote: error: Trace: 51bc9a68efa65ef7f2957480dcb43b19fea0481c22bd67f6ff01596e13d2abca
+remote: error: See https://gh.io/lfs for more information.
+remote: error: File .terraform/providers/registry.terraform.io/hashicorp/oci/7.5.0/windows_amd64/terraform-provider-oci_v7.5.0 is 219.21 MB; this exceeds GitHub's file size limit of 100.00 MB
+remote: error: GH001: Large files detected. You may want to try Git Large File Storage - https://git-lfs.github.com.
+To https://github.com/Multiplan-Ops/iac-corecloudplatform.git
+ ! [remote rejected] feature/bucket-encryption-policy -> feature/bucket-encryption-policy (pre-receive hook declined)
+error: failed to push some refs to 'https://github.com/Multiplan-Ops/iac-corecloudplatform.git'
+PS C:\Users\ramesh.kotagiri\Desktop\Source\iac-corecloudplatform>
