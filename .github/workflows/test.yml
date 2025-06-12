@@ -1,20 +1,4 @@
-import "tfplan/v2" as tfplan
-
-# Identify all Object Storage bucket resources
-all_buckets = filter tfplan.resource_changes as address, rc {
-    rc.type == "oci_objectstorage_bucket"
-    rc.change.after is not null
-}
-
-# Rule: Validate kms_key_id presence
-bucket_encryption = rule {
-    all all_buckets as address, rc {
-        rc.change.after.kms_key_id is defined and
-        rc.change.after.kms_key_id != ""
-    }
-}
-
-# Enforce encryption rule
-main = rule {
-    bucket_encryption
+policy "require-bucket-encryption" {
+  source = "require-bucket-encryption.sentinel"
+  enforcement_level = "hard-mandatory"
 }
