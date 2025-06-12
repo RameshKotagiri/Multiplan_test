@@ -22,3 +22,28 @@ variable "region" {
   type        = string
   description = "The OCI region"
 }
+
+provider "oci" {
+tenancy_ocid = var.tenancy_ocid
+user_ocid = var.user_ocid
+private_key = var.private_key
+fingerprint = var.fingerprint
+region = var.region
+}
+
+resource "oci_objectstorage_bucket" "non_compliant" {
+  compartment_id = "ocid1.compartment.oc1..aaaaaaaa6epgbx4ujj5fyqokmrstwwm3gizipwfxkkqpc3zpozwgzmf6ddaq"
+  name           = "non-compliant-bucket-${random_id.unique.hex}"
+  namespace      = "axlo0xjafwdf"
+}
+
+# resource "oci_objectstorage_bucket" "compliant" {
+#   compartment_id = "ocid1.compartment.oc1..example"
+#   name           = "compliant-bucket-${random_id.unique.hex}"
+#   namespace      = "your-namespace"
+#   kms_key_id     = "ocid1.key.oc1..example"
+# }
+
+resource "random_id" "unique" {
+  byte_length = 4
+}
