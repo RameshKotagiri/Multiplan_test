@@ -1,4 +1,18 @@
-policy "require-bucket-encryption" {
-  source = "require-bucket-encryption.sentinel"
-  enforcement_level = "hard-mandatory"
+import "tfplan/v2" as tfplan
+
+all_buckets = filter tfplan.resource_changes as address, rc {
+    rc.type is "oci_objectstorage_bucket" and
+    rc.change.after is not null and
+    "create" in rc.change.actions
+}
+
+bucket_encryption = rule {
+    all all_buckets as address, rc {
+        rc.change.after.kms_key_id is defined and
+        rc.change.after.kms_key_id != ""
+    }
+}
+
+main = rule {
+    bucket_encryption
 }
