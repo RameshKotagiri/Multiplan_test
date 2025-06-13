@@ -1,3 +1,19 @@
-[
-  "failed running OPA policy evaluation run for policy: data.terraform.deny, (output: \"1 error occurred: /home/tfc-agent/.tfc-agent/component/policy/policy-runs/poleval-gpUM3XhpTKFm4A3r/policy/oci-encryption-policies-opa/require-bucket-encryption-opa.rego:8: rego_type_error: undefined function has_key\\n\") (exit 2)"
-]
+package terraform
+
+# Deny if kms_key_id is missing or undefined
+deny[msg] {
+    resource := input.plan.resource_changes[_]
+    resource.type == "oci_objectstorage_bucket"
+    resource.change.actions[_] == "create"
+    not "kms_key_id" in object.keys(resource.change.after)  # Check if kms_key_id is a key in after
+    msg := sprintf("Bucket '%s' does not have kms_key_id defined", [resource.change.after.name])
+}
+
+# Deny if kms_key_id is empty
+deny[msg] {
+    resource := input.plan.resource_changes[_]
+    resource.type == "oci_objectstorage_bucket"
+    resource.change.actions[_] == "create"
+    resource.change.after.kms_key_id == ""
+    msg := sprintf("Bucket '%s' has an empty kms_key_id", [resource.change.after.name])
+}
