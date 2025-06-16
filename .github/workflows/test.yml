@@ -1,5 +1,48 @@
-[
-  [
-    "Bucket 'oci_objectstorage_bucket.non_compliant' does not have kms_key_id defined"
-  ]
-]
+Sentinel policy:
+
+import "tfplan/v2" as tfplan
+
+# Identify all Object Storage bucket resources
+all_buckets = filter tfplan.resource_changes as address, rc {
+    rc.type is "oci_objectstorage_bucket" and
+    rc.change.after is not null and
+    "create" in rc.change.actions
+}
+
+# Rule: Validate kms_key_id presence
+bucket_encryption = rule {
+    all all_buckets as address, rc {
+        rc.change.after.kms_key_id is defined and
+        rc.change.after.kms_key_id != ""
+    }
+}
+
+# Enforce encryption rule
+main = rule {
+    bucket_encryption
+}
+
+=========================
+
+OPA:
+
+package terraform
+
+deny[msg] {
+  resource := input.plan.resource_changes[_]
+  resource.type == "oci_objectstorage_bucket"
+  resource.change.actions[_] == "create"
+
+  # kms_key_id is either not present at all or explicitly empty
+  not resource.change.after.kms_key_id
+  msg := sprintf("Bucket '%s' does not have kms_key_id defined", [resource.address])
+}
+
+deny[msg] {
+  resource := input.plan.resource_changes[_]
+  resource.type == "oci_objectstorage_bucket"
+  resource.change.actions[_] == "create"
+  resource.change.after.kms_key_id == ""
+  msg := sprintf("Bucket '%s' has an empty kms_key_id", [resource.address])
+}
+
