@@ -1,32 +1,62 @@
-terraform {
-  required_providers {
-    tfe = {
-      source  = "hashicorp/tfe"
-      version = "~> 0.51.0"
+PS C:\Users\ramesh.kotagiri\Desktop\Source\iac-corecloudplatform\policy-automation> terraform plan -var="tfe_token=$env:TFE_TOKEN"
+
+Terraform used the selected providers to generate the following execution plan. Resource actions are indicated with the following
+symbols:
+  + create
+
+Terraform will perform the following actions:
+
+  # tfe_policy.encryption_policy will be created
+  + resource "tfe_policy" "encryption_policy" {
+      + description  = "Enforces kms_key_id on OCI buckets"
+      + enforce_mode = (known after apply)
+      + id           = (known after apply)
+      + kind         = "sentinel"
+      + name         = "require-bucket-encryption"
+      + organization = "cldhorizon"
+      + policy       = <<-EOT
+            import "tfplan/v2" as tfplan
+
+            # Identify all Object Storage bucket resources
+            all_buckets = filter tfplan.resource_changes as address, rc {
+                rc.type is "oci_objectstorage_bucket" and
+                rc.change.after is not null and
+                "create" in rc.change.actions
+            }
+
+            # Rule: Validate kms_key_id presence
+            bucket_encryption = rule {
+                all all_buckets as address, rc {
+                    rc.change.after.kms_key_id is defined and
+                    rc.change.after.kms_key_id != ""
+                }
+            }
+
+            # Enforce encryption rule
+            main = rule {
+                bucket_encryption
+            }
+        EOT
     }
-  }
-}
 
-provider "tfe" {
-  token = var.tfe_token
-}
+  # tfe_policy_set.oci_encryption_policies will be created
+  + resource "tfe_policy_set" "oci_encryption_policies" {
+      + description   = "POC policy set for OCI bucket encryption"
+      + global        = false
+      + id            = (known after apply)
+      + kind          = "sentinel"
+      + name          = "oci-encryption-policies-poc"
+      + organization  = "cldhorizon"
+      + overridable   = false
+      + policy_ids    = (known after apply)
+      + workspace_ids = (known after apply)
+    }
 
-resource "tfe_policy" "encryption_policy" {
-  name         = "require-bucket-encryption"
-  description  = "Enforces kms_key_id on OCI buckets"
-  organization = var.organization
-  policy       = file("${path.module}/../sentinel-policies/require-bucket-encryption.sentinel")
-}
+  # tfe_workspace_policy_set.attach_test_workspace will be created
+  + resource "tfe_workspace_policy_set" "attach_test_workspace" {
+      + id            = (known after apply)
+      + policy_set_id = (known after apply)
+      + workspace_id  = "ws-PyGLgfHrQc9Udb6i"
+    }
 
-resource "tfe_policy_set" "oci_encryption_policies" {
-  name         = "oci-encryption-policies-poc"
-  description  = "POC policy set for OCI bucket encryption"
-  organization = var.organization
-  kind         = "sentinel"
-  policy_ids   = [tfe_policy.encryption_policy.id]
-}
-
-resource "tfe_policy_set_workspace" "attach_test_workspace" {
-  policy_set_id = tfe_policy_set.oci_encryption_policies.id
-  workspace_id  = var.workspace_id
-}
+Plan: 3 to add, 0 to change, 0 to destroy.
