@@ -1,35 +1,18 @@
-terraform {
-  required_providers {
-    tfe = {
-      source  = "hashicorp/tfe"
-      version = "~> 0.51.0"
-    }
-  }
+variable "tfe_token" {
+  description = "Terraform Cloud API Token"
+  type        = string
+  sensitive   = true
 }
 
-provider "tfe" {
-  token = var.tfe_token
+variable "organization" {
+  description = "Terraform Cloud organization name"
+  type        = string
 }
 
-resource "tfe_sentinel_policy" "encryption_policy" {
-  name         = "require-bucket-encryption"
-  description  = "Enforces kms_key_id on OCI buckets"
-  organization = var.organization
-  policy       = file("${path.module}/../sentinel-policies/require-bucket-encryption.sentinel")
+variable "workspace_id" {
+  description = "Workspace ID to attach the policy set"
+  type        = string
 }
 
-resource "tfe_policy_set" "oci_encryption_policies" {
-  name         = "oci-encryption-policies-poc"
-  description  = "POC policy set for OCI bucket encryption"
-  organization = var.organization
-}
-
-resource "tfe_policy_set_attachment" "encryption_attachment" {
-  policy_set_id = tfe_policy_set.oci_encryption_policies.id
-  policy_id     = tfe_sentinel_policy.encryption_policy.id
-}
-
-resource "tfe_workspace_attachment" "attach_test_workspace" {
-  policy_set_id = tfe_policy_set.oci_encryption_policies.id
-  workspace_id  = var.workspace_id
-}
+organization = "your-tfc-org-name"
+workspace_id = "ws-xxxxxxxxxxxxxxxx"  # Replace with actual workspace ID
