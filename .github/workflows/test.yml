@@ -1,4 +1,33 @@
-$env:TFE_TOKEN = "your-org-token-here"
-cd policy-automation
-terraform init
-terraform apply -var="tfe_token=$env:TFE_TOKEN"
+terraform {
+  required_providers {
+    tfe = {
+      source  = "hashicorp/tfe"
+      version = "~> 0.51.0"
+    }
+  }
+}
+
+provider "tfe" {
+  token = var.tfe_token
+}
+
+resource "tfe_policy" "encryption_policy" {
+  name         = "require-bucket-encryption"
+  description  = "Enforces kms_key_id on OCI buckets"
+  organization = var.organization
+  policy       = file("${path.module}/../sentinel-policies/require-bucket-encryption.sentinel")
+}
+
+resource "tfe_policy_set" "oci_encryption_policies" {
+  name             = "oci-encryption-policies-poc"
+  description      = "POC policy set for OCI bucket encryption"
+  organization     = var.organization
+  enforcement_level = "hard-mandatory"
+  kind             = "sentinel"
+  policy_ids       = [tfe_policy.encryption_policy.id]  # <- attach policy directly here
+}
+
+resource "tfe_policy_set_workspace_attachment" "attach_test_workspace" {
+  policy_set_id = tfe_policy_set.oci_encryption_policies.id
+  workspace_id  = var.workspace_id
+}
