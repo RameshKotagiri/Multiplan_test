@@ -1,18 +1,4 @@
-variable "tfe_token" {
-  description = "Terraform Cloud API Token"
-  type        = string
-  sensitive   = true
-}
-
-variable "organization" {
-  description = "Terraform Cloud organization name"
-  type        = string
-}
-
-variable "workspace_id" {
-  description = "Workspace ID to attach the policy set"
-  type        = string
-}
-
-organization = "your-tfc-org-name"
-workspace_id = "ws-xxxxxxxxxxxxxxxx"  # Replace with actual workspace ID
+$env:TFE_TOKEN = "your-org-token-here"
+cd policy-automation
+terraform init
+terraform apply -var="tfe_token=$env:TFE_TOKEN"
