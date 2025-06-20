@@ -1,6 +1,2 @@
-git rm --cached -r .terraform
-
-git rm --cached -r policy-automation/.terraform
-
-
-git rm --cached -r policy-automation/.terraform/providers/registry.terraform.io/hashicorp/tfe/0.51.1/windows_amd64
+- name: Add Terraform to PATH
+  run: echo "$HOME/.terraform-bin" >> $GITHUB_PATH
