@@ -1,20 +1,2 @@
-# resource "oci_objectstorage_bucket" "compliant" {
-#   compartment_id = "ocid1.compartment.oc1..example"
-#   name           = "compliant-bucket-${random_id.unique.hex}"
-#   namespace      = "your-namespace"
-#   kms_key_id     = "ocid1.key.oc1..example"
-# }
-
-$env:TF_VAR_tenancy_ocid = "ocid1.tenancy.oc1..example"
-$env:TF_VAR_user_ocid = "ocid1.user.oc1..example"
-$env:TF_VAR_private_key = "C:\path\to\oci_api_key.pem"  # Or the actual key string if inline
-$env:TF_VAR_fingerprint = "xx:xx:xx:xx:xx"
-$env:TF_VAR_region = "us-phoenix-1"  # ✅ Must be lowercase
-
-terraform plan -out="tfplan.binary"
-
-terraform show -json "tfplan.binary" > "tfplan.json"
-
-Get-Content "tfplan.json" | ConvertFrom-Json | ConvertTo-Json -Depth 100
-
-(Get-Content "tfplan.json" | ConvertFrom-Json | ConvertTo-Json -Depth 100) | Set-Content "formatted_plan.json"
+terraform init
+terraform apply -var="tfe_token=$env:TFE_TOKEN"
