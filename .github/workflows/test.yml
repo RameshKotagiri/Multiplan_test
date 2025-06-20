@@ -1,3 +1,6 @@
-terraform init
-terraform plan -var="tfe_token=your_token" -var="organization=your_org" -var="workspace_id=your_workspace_id"
-terraform apply -auto-approve -var="tfe_token=..." -var="organization=..." -var="workspace_id=..."
+git rm --cached -r .terraform
+
+git rm --cached -r policy-automation/.terraform
+
+
+git rm --cached -r policy-automation/.terraform/providers/registry.terraform.io/hashicorp/tfe/0.51.1/windows_amd64
