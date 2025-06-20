@@ -1,63 +1,42 @@
-Policy automation:
+name: Automate Sentinel Policy Setup
 
-main.tf: 
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'policy-automation/**'
+      - 'sentinel-policies/**'
+  workflow_dispatch:
 
-terraform {
-  required_providers {
-    tfe = {
-      source  = "hashicorp/tfe"
-      version = "~> 0.51.0"
-    }
-  }
-}
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
 
-provider "tfe" {
-  token = var.tfe_token
-}
+    defaults:
+      run:
+        working-directory: policy-automation
 
-resource "tfe_policy" "encryption_policy" {
-  name         = "require-bucket-encryption"
-  description  = "Enforces kms_key_id on OCI buckets"
-  organization = var.organization
-  policy       = file("${path.module}/../sentinel-policies/require-bucket-encryption.sentinel")
-}
+    env:
+      TF_VAR_tfe_token: ${{ secrets.TFE_TOKEN }}
+      TF_VAR_organization: ${{ secrets.TFC_ORGANIZATION }}
+      TF_VAR_workspace_id: ${{ secrets.TFC_WORKSPACE_ID }}
 
-resource "tfe_policy_set" "oci_encryption_policies" {
-  name         = "oci-encryption-policies-poc"
-  description  = "POC policy set for OCI bucket encryption"
-  organization = var.organization
-  kind         = "sentinel"
-  policy_ids   = [tfe_policy.encryption_policy.id]
-}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-resource "tfe_workspace_policy_set" "attach_test_workspace" {
-  policy_set_id = tfe_policy_set.oci_encryption_policies.id
-  workspace_id  = var.workspace_id
-}
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
 
-------
+      - name: Terraform Init
+        run: terraform init
 
-Variables.tf:
+      - name: Terraform Plan
+        run: terraform plan -no-color
+        continue-on-error: true  # Optional: useful for manual inspection
 
-variable "tfe_token" {
-  description = "Terraform Cloud API Token"
-  type        = string
-  sensitive   = true
-}
-
-variable "organization" {
-  description = "Terraform Cloud organization name"
-  type        = string
-}
-
-variable "workspace_id" {
-  description = "Workspace ID to attach the policy set"
-  type        = string
-}
-
----------------
-
-terraform.tfvars:
-
-organization = "cldhorizon"
-workspace_id = "ws-PyGLgfHrQc9Udb6i" 
+      - name: Terraform Apply
+        run: terraform apply -auto-approve
